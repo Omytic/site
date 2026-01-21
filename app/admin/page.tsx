@@ -1,9 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { Lock, X, Plus, Edit2, Trash2, Upload, CheckCircle, AlertCircle } from 'lucide-react'
+import { 
+  Lock, X, Plus, Edit2, Trash2, Upload, CheckCircle, AlertCircle, 
+  Package, Settings, LogOut, Menu, Home, Image as ImageIcon, 
+  ExternalLink, Search, Filter, LayoutDashboard, BarChart3, 
+  TrendingUp, Clock, Table as TableIcon, Grid3x3
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import Logo from '@/components/Logo'
+import Toast from '@/components/Toast'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface Product {
   id: string
@@ -15,8 +22,10 @@ interface Product {
   features: string[] | null
 }
 
+type ViewMode = 'dashboard' | 'products' | 'add' | 'settings'
+type ProductViewMode = 'grid' | 'table'
+
 export default function AdminPage() {
-  const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -25,8 +34,15 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('dashboard')
+  const [productViewMode, setProductViewMode] = useState<ProductViewMode>('grid')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCategory, setFilterCategory] = useState<'all' | 'kumaş' | 'diğer'>('all')
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [showFormSheet, setShowFormSheet] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -51,8 +67,6 @@ export default function AdminPage() {
     e.preventDefault()
     setError('')
     
-    // Basit şifre kontrolü - production'da daha güvenli bir yöntem kullanın
-    // Şifre .env.local dosyasındaki ADMIN_PASSWORD değişkeninden alınır
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123'
     
     if (password === adminPassword) {
@@ -70,6 +84,7 @@ export default function AdminPage() {
     setIsAuthenticated(false)
     sessionStorage.removeItem('admin_authenticated')
     setPassword('')
+    setViewMode('products')
   }
 
   const fetchProducts = async () => {
@@ -94,12 +109,10 @@ export default function AdminPage() {
     setError('')
     
     try {
-      // Dosya adını oluştur (timestamp + random)
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `products/${fileName}`
 
-      // Supabase Storage'a yükle
       const { error: uploadError } = await supabase.storage
         .from('products')
         .upload(filePath, file, {
@@ -109,15 +122,13 @@ export default function AdminPage() {
 
       if (uploadError) throw uploadError
 
-      // Public URL'i al
       const { data } = supabase.storage
         .from('products')
         .getPublicUrl(filePath)
 
       setFormData({ ...formData, image_url: data.publicUrl })
       setPreviewImage(data.publicUrl)
-      setSuccessMessage('Görsel başarıyla yüklendi!')
-      setTimeout(() => setSuccessMessage(''), 3000)
+      setToast({ message: 'Görsel başarıyla yüklendi!', type: 'success' })
     } catch (err: any) {
       setError(err.message || 'Görsel yüklenirken bir hata oluştu')
     } finally {
@@ -129,13 +140,11 @@ export default function AdminPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Dosya tipi kontrolü
     if (!file.type.startsWith('image/')) {
       setError('Lütfen bir görsel dosyası seçin')
       return
     }
 
-    // Dosya boyutu kontrolü (5MB)
     if (file.size > 5 * 1024 * 1024) {
       setError('Dosya boyutu 5MB\'dan küçük olmalıdır')
       return
@@ -163,9 +172,7 @@ export default function AdminPage() {
       }
 
       if (editingProduct) {
-        // Eski görseli sil (eğer yeni görsel yüklendiyse)
         if (editingProduct.image_url && editingProduct.image_url !== formData.image_url) {
-          // Storage'dan eski görseli sil
           const oldImagePath = editingProduct.image_url.split('/products/')[1]
           if (oldImagePath) {
             await supabase.storage
@@ -174,25 +181,22 @@ export default function AdminPage() {
           }
         }
 
-        // Güncelle
         const { error } = await supabase
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id)
 
         if (error) throw error
-        setSuccessMessage('Ürün başarıyla güncellendi!')
+        setToast({ message: 'Ürün başarıyla güncellendi!', type: 'success' })
       } else {
-        // Yeni ekle
         const { error } = await supabase
           .from('products')
           .insert([productData])
 
         if (error) throw error
-        setSuccessMessage('Ürün başarıyla eklendi!')
+        setToast({ message: 'Ürün başarıyla eklendi!', type: 'success' })
       }
 
-      // Formu sıfırla
       setFormData({
         name: '',
         description: '',
@@ -203,17 +207,15 @@ export default function AdminPage() {
       })
       setPreviewImage(null)
       setEditingProduct(null)
-      setShowForm(false)
+      setShowFormSheet(false)
+      setViewMode('products')
       fetchProducts()
-      
-      setTimeout(() => setSuccessMessage(''), 3000)
     } catch (err: any) {
       setError(err.message || 'Bir hata oluştu')
     } finally {
       setLoading(false)
     }
   }
-
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bu ürünü silmek istediğinize emin misiniz?')) return
@@ -223,10 +225,8 @@ export default function AdminPage() {
     setSuccessMessage('')
     
     try {
-      // Önce ürünü bul (görseli silmek için)
       const product = products.find(p => p.id === id)
       
-      // Görseli storage'dan sil
       if (product?.image_url) {
         const imagePath = product.image_url.split('/products/')[1]
         if (imagePath) {
@@ -236,7 +236,6 @@ export default function AdminPage() {
         }
       }
 
-      // Ürünü veritabanından sil
       const { error } = await supabase
         .from('products')
         .delete()
@@ -244,30 +243,13 @@ export default function AdminPage() {
 
       if (error) throw error
       
-      setSuccessMessage('Ürün başarıyla silindi!')
+      setToast({ message: 'Ürün başarıyla silindi!', type: 'success' })
       fetchProducts()
-      setTimeout(() => setSuccessMessage(''), 3000)
     } catch (err: any) {
       setError(err.message || 'Ürün silinirken bir hata oluştu')
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleCancel = () => {
-    setFormData({
-      name: '',
-      description: '',
-      image_url: '',
-      category: 'kumaş',
-      amazon_link: '',
-      features: '',
-    })
-    setPreviewImage(null)
-    setEditingProduct(null)
-    setShowForm(false)
-    setError('')
-    setSuccessMessage('')
   }
 
   const handleEdit = (product: Product) => {
@@ -281,29 +263,79 @@ export default function AdminPage() {
       features: product.features?.join('\n') || '',
     })
     setPreviewImage(product.image_url || null)
-    setShowForm(true)
+    setShowFormSheet(true)
     setError('')
-    setSuccessMessage('')
+  }
+
+  const handleNewProduct = () => {
+    setEditingProduct(null)
+    setFormData({
+      name: '',
+      description: '',
+      image_url: '',
+      category: 'kumaş',
+      amazon_link: '',
+      features: '',
+    })
+    setPreviewImage(null)
+    setShowFormSheet(true)
+    setError('')
+  }
+
+  const handleCancel = () => {
+    setFormData({
+      name: '',
+      description: '',
+      image_url: '',
+      category: 'kumaş',
+      amazon_link: '',
+      features: '',
+    })
+    setPreviewImage(null)
+    setEditingProduct(null)
+    setShowFormSheet(false)
+    setError('')
+  }
+
+  // Filtrelenmiş ürünler
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesCategory = filterCategory === 'all' || product.category === filterCategory
+    return matchesSearch && matchesCategory
+  })
+
+  // İstatistikler
+  const stats = {
+    totalProducts: products.length,
+    fabrics: products.filter(p => p.category === 'kumaş').length,
+    other: products.filter(p => p.category === 'diğer').length,
+    lastAdded: products[0]?.name || 'Henüz ürün yok'
   }
 
   // Giriş ekranı
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-luxury-lg p-8">
+      <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-navy-50 to-anthracite-50">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-white rounded-2xl shadow-luxury-xl p-8 border border-anthracite-100"
+        >
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-navy-900 text-gold-400 mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-navy-900 to-anthracite-900 text-gold-400 mb-4">
               <Lock className="w-8 h-8" />
             </div>
             <h1 className="text-2xl font-serif font-bold text-navy-900">
               Admin Paneli
             </h1>
-            <p className="text-anthracite-600 mt-2">Lütfen şifrenizi girin</p>
+            <p className="text-anthracite-600 mt-2 text-sm">Lütfen şifrenizi girin</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
                 {error}
               </div>
             )}
@@ -313,327 +345,624 @@ export default function AdminPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Şifre"
-                className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
                 required
                 autoFocus
               />
             </div>
             <button
               type="submit"
-              className="w-full px-4 py-3 bg-navy-900 hover:bg-navy-800 text-white font-semibold rounded-lg transition-colors"
+              className="w-full px-4 py-3 bg-gradient-to-r from-navy-900 to-anthracite-900 hover:from-navy-800 hover:to-anthracite-800 text-white font-semibold rounded-lg transition-all shadow-luxury hover:shadow-luxury-lg"
             >
               Giriş Yap
             </button>
           </form>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   // Ana admin paneli
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Success/Error Messages */}
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />
-            <span>{successMessage}</span>
+    <div className="min-h-screen bg-gradient-to-br from-anthracite-50 via-white to-beige-50">
+      {/* Sidebar - Dark Theme */}
+      <aside className={`fixed left-0 top-0 h-screen bg-gradient-to-b from-navy-900 to-anthracite-900 border-r border-navy-800 shadow-luxury-xl z-40 transition-all duration-300 ${
+        sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
+      }`}>
+        <div className="h-full flex flex-col">
+          {/* Logo */}
+          <div className="p-6 border-b border-navy-800">
+            <a href="/" className="flex items-center">
+              <Logo variant="light" size="sm" />
+            </a>
           </div>
-        )}
-        {error && !showForm && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            <span>{error}</span>
-          </div>
-        )}
 
+          {/* Menü */}
+          <nav className="flex-1 p-4 space-y-2">
+            <button
+              onClick={() => setViewMode('dashboard')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                viewMode === 'dashboard'
+                  ? 'bg-gold-600/20 text-gold-400 border border-gold-500/30'
+                  : 'text-navy-200 hover:bg-navy-800/50 hover:text-white'
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              <span className="font-medium">Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('products')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                viewMode === 'products'
+                  ? 'bg-gold-600/20 text-gold-400 border border-gold-500/30'
+                  : 'text-navy-200 hover:bg-navy-800/50 hover:text-white'
+              }`}
+            >
+              <Package className="w-5 h-5" />
+              <span className="font-medium">Ürün Listesi</span>
+            </button>
+
+            <button
+              onClick={handleNewProduct}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                showFormSheet
+                  ? 'bg-gold-600/20 text-gold-400 border border-gold-500/30'
+                  : 'text-navy-200 hover:bg-navy-800/50 hover:text-white'
+              }`}
+            >
+              <Plus className="w-5 h-5" />
+              <span className="font-medium">Yeni Ürün Ekle</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('settings')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                viewMode === 'settings'
+                  ? 'bg-gold-600/20 text-gold-400 border border-gold-500/30'
+                  : 'text-navy-200 hover:bg-navy-800/50 hover:text-white'
+              }`}
+            >
+              <Settings className="w-5 h-5" />
+              <span className="font-medium">Site Ayarları</span>
+            </button>
+          </nav>
+
+          {/* Çıkış */}
+          <div className="p-4 border-t border-navy-800">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="font-medium">Çıkış Yap</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Ana İçerik */}
+      <main className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-luxury p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-serif font-bold text-navy-900">
-                Ürün Yönetimi
-              </h1>
-              <p className="text-anthracite-600 mt-1">
-                Toplam {products.length} ürün
-              </p>
-            </div>
+        <header className="bg-white border-b border-anthracite-100 shadow-luxury sticky top-0 z-30">
+          <div className="px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => {
-                  handleCancel()
-                  setShowForm(true)
+                  setSidebarOpen(!sidebarOpen)
+                  setMobileMenuOpen(!mobileMenuOpen)
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-gold-600 hover:bg-gold-500 text-navy-900 font-semibold rounded-lg transition-colors"
+                className="p-2 hover:bg-anthracite-50 rounded-lg transition-colors lg:hidden"
               >
-                <Plus className="w-5 h-5" />
-                Yeni Ürün
+                <Menu className="w-5 h-5 text-anthracite-700" />
               </button>
               <button
-                onClick={handleLogout}
-                className="px-4 py-2 border border-anthracite-300 hover:bg-anthracite-50 text-anthracite-700 font-medium rounded-lg transition-colors"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="hidden lg:block p-2 hover:bg-anthracite-50 rounded-lg transition-colors"
               >
-                Çıkış
+                <Menu className="w-5 h-5 text-anthracite-700" />
               </button>
+              <div>
+                <h1 className="text-xl font-serif font-bold text-navy-900">
+                  {viewMode === 'dashboard' && 'Dashboard'}
+                  {viewMode === 'products' && 'Ürün Listesi'}
+                  {viewMode === 'settings' && 'Site Ayarları'}
+                </h1>
+                {viewMode === 'products' && (
+                  <p className="text-sm text-anthracite-600 mt-0.5">
+                    {filteredProducts.length} ürün
+                  </p>
+                )}
+              </div>
             </div>
+            <a
+              href="/"
+              className="flex items-center gap-2 px-4 py-2 text-anthracite-700 hover:bg-anthracite-50 rounded-lg transition-colors"
+            >
+              <Home className="w-4 h-4" />
+              <span className="text-sm font-medium hidden sm:inline">Ana Sayfa</span>
+            </a>
           </div>
-        </div>
+        </header>
 
-        {/* Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-luxury-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-anthracite-100 flex items-center justify-between">
-                <h2 className="text-2xl font-serif font-bold text-navy-900">
-                  {editingProduct ? 'Ürün Düzenle' : 'Yeni Ürün Ekle'}
-                </h2>
-                <button
-                  onClick={handleCancel}
-                  className="p-2 hover:bg-anthracite-50 rounded-lg transition-colors"
+        {/* İçerik Alanı */}
+        <div className="p-6">
+          {/* Toast Notification */}
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              isVisible={!!toast}
+              onClose={() => setToast(null)}
+            />
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-center gap-2"
+            >
+              <AlertCircle className="w-5 h-5" />
+              <span>{error}</span>
+            </motion.div>
+          )}
+
+          {/* Dashboard Görünümü */}
+          {viewMode === 'dashboard' && (
+            <div className="space-y-6">
+              {/* İstatistik Kartları */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6"
                 >
-                  <X className="w-5 h-5 text-anthracite-600" />
-                </button>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-navy-100 rounded-lg">
+                      <Package className="w-6 h-6 text-navy-600" />
+                    </div>
+                    <TrendingUp className="w-5 h-5 text-green-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-navy-900 mb-1">{stats.totalProducts}</h3>
+                  <p className="text-sm text-anthracite-600">Toplam Ürün</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-gold-100 rounded-lg">
+                      <BarChart3 className="w-6 h-6 text-gold-600" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold text-navy-900 mb-1">{stats.fabrics}</h3>
+                  <p className="text-sm text-anthracite-600">Kumaş Ürünleri</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-anthracite-100 rounded-lg">
+                      <Package className="w-6 h-6 text-anthracite-600" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold text-navy-900 mb-1">{stats.other}</h3>
+                  <p className="text-sm text-anthracite-600">Diğer Ürünler</p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="p-3 bg-gold-100 rounded-lg">
+                      <Clock className="w-6 h-6 text-gold-600" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-bold text-navy-900 mb-1 line-clamp-1">{stats.lastAdded}</h3>
+                  <p className="text-sm text-anthracite-600">Son Eklenen</p>
+                </motion.div>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-                    {error}
+              {/* Hızlı Erişim */}
+              <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                <h2 className="text-xl font-serif font-bold text-navy-900 mb-4">Hızlı Erişim</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setViewMode('products')}
+                    className="flex items-center gap-4 p-4 border border-anthracite-200 rounded-lg hover:bg-anthracite-50 transition-colors text-left"
+                  >
+                    <div className="p-3 bg-navy-100 rounded-lg">
+                      <Package className="w-6 h-6 text-navy-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-navy-900">Ürünleri Görüntüle</h3>
+                      <p className="text-sm text-anthracite-600">Tüm ürünleri listele</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={handleNewProduct}
+                    className="flex items-center gap-4 p-4 border border-anthracite-200 rounded-lg hover:bg-anthracite-50 transition-colors text-left"
+                  >
+                    <div className="p-3 bg-gold-100 rounded-lg">
+                      <Plus className="w-6 h-6 text-gold-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-navy-900">Yeni Ürün Ekle</h3>
+                      <p className="text-sm text-anthracite-600">Yeni ürün ekle</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ürünler Görünümü */}
+          {viewMode === 'products' && (
+            <div className="space-y-6">
+              {/* Filtreler ve Görünüm Seçici */}
+              <div className="bg-white rounded-xl shadow-luxury p-4 border border-anthracite-100">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-anthracite-400" />
+                    <input
+                      type="text"
+                      placeholder="Ürün ara..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                    />
                   </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Ürün Adı *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-                    required
-                  />
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-5 h-5 text-anthracite-400" />
+                    <select
+                      value={filterCategory}
+                      onChange={(e) => setFilterCategory(e.target.value as any)}
+                      className="px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                    >
+                      <option value="all">Tüm Kategoriler</option>
+                      <option value="kumaş">Kumaş</option>
+                      <option value="diğer">Diğer</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 border border-anthracite-200 rounded-lg p-1">
+                    <button
+                      onClick={() => setProductViewMode('grid')}
+                      className={`p-2 rounded transition-colors ${
+                        productViewMode === 'grid' 
+                          ? 'bg-gold-100 text-gold-700' 
+                          : 'text-anthracite-600 hover:bg-anthracite-50'
+                      }`}
+                    >
+                      <Grid3x3 className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setProductViewMode('table')}
+                      className={`p-2 rounded transition-colors ${
+                        productViewMode === 'table' 
+                          ? 'bg-gold-100 text-gold-700' 
+                          : 'text-anthracite-600 hover:bg-anthracite-50'
+                      }`}
+                    >
+                      <TableIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleNewProduct}
+                    className="flex items-center gap-2 px-4 py-2 bg-gold-600 hover:bg-gold-500 text-navy-900 font-semibold rounded-lg transition-colors shadow-luxury hover:shadow-luxury-lg"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Yeni Ürün
+                  </button>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Açıklama
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Görsel
-                  </label>
-                  
-                  {/* Görsel Yükleme */}
-                  <div className="space-y-3">
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-anthracite-300 rounded-lg cursor-pointer bg-anthracite-50 hover:bg-anthracite-100 transition-colors">
-                      {uploading ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-600"></div>
-                          <span className="text-sm text-anthracite-600">Yükleniyor...</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2">
-                          <Upload className="w-8 h-8 text-anthracite-400" />
-                          <span className="text-sm text-anthracite-600">
-                            Görsel Yükle (Max 5MB)
+              {/* Ürün Listesi - Grid Görünümü */}
+              {productViewMode === 'grid' && (
+                <>
+                  {loading ? (
+                    <div className="text-center py-12 text-anthracite-600">Yükleniyor...</div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-luxury p-12 text-center border border-anthracite-100">
+                      <Package className="w-12 h-12 text-anthracite-300 mx-auto mb-4" />
+                      <p className="text-anthracite-600">Henüz ürün bulunmuyor.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filteredProducts.map((product, index) => (
+                    <motion.div
+                      key={product.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="bg-white rounded-xl shadow-luxury border border-anthracite-100 overflow-hidden hover:shadow-luxury-lg transition-all group"
+                    >
+                      {/* Görsel */}
+                      <div className="relative aspect-square bg-anthracite-50 overflow-hidden">
+                        {product.image_url ? (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-anthracite-300">
+                            <ImageIcon className="w-12 h-12" />
+                          </div>
+                        )}
+                        <div className="absolute top-2 right-2">
+                          <span className={`px-2 py-1 text-xs font-medium rounded ${
+                            product.category === 'kumaş' 
+                              ? 'bg-navy-100 text-navy-700' 
+                              : 'bg-gold-100 text-gold-700'
+                          }`}>
+                            {product.category}
                           </span>
                         </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        disabled={uploading}
-                        className="hidden"
-                      />
-                    </label>
-
-                    {/* Önizleme */}
-                    {(previewImage || formData.image_url) && (
-                      <div className="relative">
-                        <img
-                          src={previewImage || formData.image_url}
-                          alt="Önizleme"
-                          className="w-full h-48 object-cover rounded-lg border border-anthracite-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPreviewImage(null)
-                            setFormData({ ...formData, image_url: '' })
-                          }}
-                          className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-full"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
                       </div>
-                    )}
 
-                    {/* Manuel URL Girişi (Alternatif) */}
-                    <div>
-                      <p className="text-xs text-anthracite-500 mb-1">veya URL ile ekle:</p>
-                      <input
-                        type="text"
-                        value={formData.image_url}
-                        onChange={(e) => {
-                          setFormData({ ...formData, image_url: e.target.value })
-                          setPreviewImage(e.target.value || null)
-                        }}
-                        placeholder="https://..."
-                        className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 text-sm"
-                      />
-                    </div>
-                  </div>
+                      {/* İçerik */}
+                      <div className="p-4">
+                        <h3 className="font-serif font-bold text-navy-900 mb-1 line-clamp-2">
+                          {product.name}
+                        </h3>
+                        {product.description && (
+                          <p className="text-sm text-anthracite-600 mb-3 line-clamp-2">
+                            {product.description}
+                          </p>
+                        )}
+                        
+                        {/* Butonlar */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEdit(product)}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-anthracite-50 hover:bg-anthracite-100 text-anthracite-700 rounded-lg transition-colors text-sm font-medium"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => handleDelete(product.id)}
+                            className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                            title="Sil"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Kategori *
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as 'kumaş' | 'diğer' })}
-                    className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-                    required
-                  >
-                    <option value="kumaş">Kumaş</option>
-                    <option value="diğer">Diğer</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Amazon Linki
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.amazon_link}
-                    onChange={(e) => setFormData({ ...formData, amazon_link: e.target.value })}
-                    placeholder="https://www.amazon.com.tr/..."
-                    className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-anthracite-700 mb-1">
-                    Özellikler (Her satıra bir özellik)
-                  </label>
-                  <textarea
-                    value={formData.features}
-                    onChange={(e) => setFormData({ ...formData, features: e.target.value })}
-                    rows={5}
-                    placeholder="Özellik 1&#10;Özellik 2&#10;Özellik 3"
-                    className="w-full px-4 py-2 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 px-4 py-2 bg-gold-600 hover:bg-gold-500 text-navy-900 font-semibold rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {loading ? 'Kaydediliyor...' : editingProduct ? 'Güncelle' : 'Ekle'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="px-4 py-2 border border-anthracite-300 hover:bg-anthracite-50 text-anthracite-700 font-medium rounded-lg transition-colors"
-                  >
-                    İptal
-                  </button>
-                </div>
-              </form>
+              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Ürün Listesi */}
-        {loading && !showForm ? (
-          <div className="text-center py-12 text-anthracite-600">Yükleniyor...</div>
-        ) : products.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-luxury p-12 text-center">
-            <p className="text-anthracite-600">Henüz ürün eklenmemiş.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="bg-white rounded-xl shadow-luxury p-6 border border-anthracite-100 hover:shadow-luxury-lg transition-shadow"
-              >
-                <div className="flex items-start gap-4">
-                  {/* Görsel Önizleme */}
-                  {product.image_url && (
-                    <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-anthracite-50 border border-anthracite-200">
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="text-xl font-serif font-bold text-navy-900">
-                        {product.name}
-                      </h3>
-                      <span className="px-2 py-1 text-xs font-medium rounded bg-anthracite-100 text-anthracite-700 whitespace-nowrap">
-                        {product.category}
-                      </span>
-                    </div>
-                    {product.description && (
-                      <p className="text-anthracite-600 mb-2 text-sm line-clamp-2">
-                        {product.description}
-                      </p>
-                    )}
-                    {product.amazon_link && (
-                      <a
-                        href={product.amazon_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-gold-600 hover:text-gold-700 inline-flex items-center gap-1"
-                      >
-                        Amazon Linki →
-                      </a>
-                    )}
+          {/* Sağdan Açılan Form Panel (Sheet) */}
+          <AnimatePresence>
+            {showFormSheet && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowFormSheet(false)}
+                  className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+                />
+                {/* Sheet Panel */}
+                <motion.div
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                  className="fixed right-0 top-0 h-full w-full max-w-2xl bg-white shadow-luxury-xl z-50 overflow-y-auto"
+                >
+                  <div className="sticky top-0 bg-white border-b border-anthracite-100 p-6 flex items-center justify-between z-10">
+                    <h2 className="text-2xl font-serif font-bold text-navy-900">
+                      {editingProduct ? 'Ürün Düzenle' : 'Yeni Ürün Ekle'}
+                    </h2>
+                    <button
+                      onClick={() => setShowFormSheet(false)}
+                      className="p-2 hover:bg-anthracite-50 rounded-lg transition-colors"
+                    >
+                      <X className="w-5 h-5 text-anthracite-600" />
+                    </button>
                   </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleEdit(product)}
-                      disabled={loading}
-                      className="p-2 hover:bg-anthracite-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Düzenle"
+
+                  <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                  {/* Ürün Adı */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Ürün Adı *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                      required
+                    />
+                  </div>
+
+                  {/* Açıklama */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Açıklama
+                    </label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      rows={4}
+                      className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all resize-none"
+                    />
+                  </div>
+
+                  {/* Görsel */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Görsel
+                    </label>
+                    
+                    <div className="space-y-4">
+                      {/* Yükleme Alanı */}
+                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-anthracite-300 rounded-lg cursor-pointer bg-anthracite-50 hover:bg-anthracite-100 transition-colors">
+                        {uploading ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-600"></div>
+                            <span className="text-sm text-anthracite-600">Yükleniyor...</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <Upload className="w-8 h-8 text-anthracite-400" />
+                            <span className="text-sm text-anthracite-600">
+                              Görsel Yükle (Max 5MB)
+                            </span>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          disabled={uploading}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {/* Önizleme */}
+                      {(previewImage || formData.image_url) && (
+                        <div className="relative">
+                          <img
+                            src={previewImage || formData.image_url}
+                            alt="Önizleme"
+                            className="w-full h-64 object-cover rounded-lg border border-anthracite-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewImage(null)
+                              setFormData({ ...formData, image_url: '' })
+                            }}
+                            className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-luxury"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Manuel URL */}
+                      <div>
+                        <p className="text-xs text-anthracite-500 mb-2">veya URL ile ekle:</p>
+                        <input
+                          type="text"
+                          value={formData.image_url}
+                          onChange={(e) => {
+                            setFormData({ ...formData, image_url: e.target.value })
+                            setPreviewImage(e.target.value || null)
+                          }}
+                          placeholder="https://..."
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kategori */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Kategori *
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value as 'kumaş' | 'diğer' })}
+                      className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                      required
                     >
-                      <Edit2 className="w-5 h-5 text-anthracite-600" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(product.id)}
-                      disabled={loading}
-                      className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Sil"
-                    >
-                      <Trash2 className="w-5 h-5 text-red-600" />
-                    </button>
+                      <option value="kumaş">Kumaş</option>
+                      <option value="diğer">Diğer</option>
+                    </select>
+                  </div>
+
+                  {/* Amazon Linki */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Amazon Linki
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.amazon_link}
+                      onChange={(e) => setFormData({ ...formData, amazon_link: e.target.value })}
+                      placeholder="https://www.amazon.com.tr/..."
+                      className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+
+                  {/* Özellikler */}
+                  <div>
+                    <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                      Özellikler (Her satıra bir özellik)
+                    </label>
+                    <textarea
+                      value={formData.features}
+                      onChange={(e) => setFormData({ ...formData, features: e.target.value })}
+                      rows={6}
+                      placeholder="Özellik 1&#10;Özellik 2&#10;Özellik 3"
+                      className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all resize-none"
+                    />
+                  </div>
+
+                    {/* Butonlar */}
+                    <div className="flex gap-3 pt-4 border-t border-anthracite-100 sticky bottom-0 bg-white pb-6">
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 px-6 py-3 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-navy-900 font-semibold rounded-lg transition-all shadow-luxury hover:shadow-luxury-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? 'Kaydediliyor...' : editingProduct ? 'Güncelle' : 'Ürün Ekle'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowFormSheet(false)}
+                        className="px-6 py-3 border border-anthracite-300 hover:bg-anthracite-50 text-anthracite-700 font-medium rounded-lg transition-colors"
+                      >
+                        İptal
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+          {/* Ayarlar Görünümü */}
+          {viewMode === 'settings' && (
+            <div className="max-w-2xl mx-auto">
+              <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                <h2 className="text-2xl font-serif font-bold text-navy-900 mb-6">Ayarlar</h2>
+                <div className="space-y-4">
+                  <div className="p-4 bg-anthracite-50 rounded-lg">
+                    <h3 className="font-semibold text-anthracite-900 mb-2">Bilgi</h3>
+                    <p className="text-sm text-anthracite-600">
+                      Bu bölüm yakında eklenecektir. Şu anda ürün yönetimi için admin paneli kullanılabilir.
+                    </p>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }
