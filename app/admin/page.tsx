@@ -744,7 +744,91 @@ export default function AdminPage() {
                       </div>
                     </motion.div>
                   ))}
-                </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Ürün Listesi - Tablo Görünümü */}
+              {productViewMode === 'table' && (
+                <>
+                  {loading ? (
+                    <div className="text-center py-12 text-anthracite-600">Yükleniyor...</div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-luxury p-12 text-center border border-anthracite-100">
+                      <Package className="w-12 h-12 text-anthracite-300 mx-auto mb-4" />
+                      <p className="text-anthracite-600">Henüz ürün bulunmuyor.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-anthracite-50 border-b border-anthracite-200">
+                            <tr>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-anthracite-700 uppercase tracking-wider">Görsel</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-anthracite-700 uppercase tracking-wider">Ürün Adı</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-anthracite-700 uppercase tracking-wider">Kategori</th>
+                              <th className="px-6 py-4 text-left text-xs font-semibold text-anthracite-700 uppercase tracking-wider">Açıklama</th>
+                              <th className="px-6 py-4 text-right text-xs font-semibold text-anthracite-700 uppercase tracking-wider">İşlemler</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-anthracite-100">
+                            {filteredProducts.map((product) => (
+                              <tr key={product.id} className="hover:bg-anthracite-50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-anthracite-100">
+                                    {product.image_url ? (
+                                      <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <ImageIcon className="w-6 h-6 text-anthracite-300" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="font-serif font-bold text-navy-900">{product.name}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                    product.category === 'kumaş' 
+                                      ? 'bg-navy-100 text-navy-700' 
+                                      : 'bg-gold-100 text-gold-700'
+                                  }`}>
+                                    {product.category}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-sm text-anthracite-600 line-clamp-2 max-w-md">
+                                    {product.description || '-'}
+                                  </p>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => handleEdit(product)}
+                                      className="p-2 bg-anthracite-50 hover:bg-anthracite-100 text-anthracite-700 rounded-lg transition-colors"
+                                      title="Düzenle"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(product.id)}
+                                      className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                                      title="Sil"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
