@@ -52,6 +52,7 @@ export default function AdminPage() {
     setError('')
     
     // Basit şifre kontrolü - production'da daha güvenli bir yöntem kullanın
+    // Şifre .env.local dosyasındaki ADMIN_PASSWORD değişkeninden alınır
     const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123'
     
     if (password === adminPassword) {
