@@ -5,7 +5,8 @@ import {
   Lock, X, Plus, Edit2, Trash2, Upload, CheckCircle, AlertCircle, 
   Package, Settings, LogOut, Menu, Home, Image as ImageIcon, 
   ExternalLink, Search, Filter, LayoutDashboard, BarChart3, 
-  TrendingUp, Clock, Table as TableIcon, Grid3x3
+  TrendingUp, Clock, Table as TableIcon, Grid3x3, Phone, Mail, 
+  MapPin, Instagram, Linkedin, Bell, Globe, Save, ToggleLeft, ToggleRight
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import Logo from '@/components/Logo'
@@ -43,6 +44,8 @@ export default function AdminPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [showFormSheet, setShowFormSheet] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [settings, setSettings] = useState<any>(null)
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -60,8 +63,81 @@ export default function AdminPage() {
     if (stored === 'true') {
       setIsAuthenticated(true)
       fetchProducts()
+      fetchSettings()
     }
   }, [])
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .limit(1)
+        .single()
+
+      if (error && error.code !== 'PGRST116') throw error
+      
+      if (data) {
+        setSettings(data)
+      } else {
+        // İlk kez oluşturuluyorsa varsayılan değerler
+        setSettings({
+          phone: '+90 553 588 69 36',
+          whatsapp: '+90 553 588 69 36',
+          email: 'info@omytic.com',
+          address: '',
+          instagram: '',
+          linkedin: '',
+          announcement_text: '',
+          announcement_visible: false,
+          site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
+          site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
+        })
+      }
+    } catch (err: any) {
+      console.error('Ayarlar yüklenirken hata:', err)
+    }
+  }
+
+  const handleSaveSettings = async () => {
+    if (!settings) return
+    
+    setSettingsLoading(true)
+    setError('')
+    
+    try {
+      // Önce var mı kontrol et
+      const { data: existing } = await supabase
+        .from('settings')
+        .select('id')
+        .limit(1)
+        .single()
+
+      if (existing) {
+        // Güncelle
+        const { error } = await supabase
+          .from('settings')
+          .update(settings)
+          .eq('id', existing.id)
+
+        if (error) throw error
+      } else {
+        // Yeni oluştur
+        const { error } = await supabase
+          .from('settings')
+          .insert([settings])
+
+        if (error) throw error
+      }
+
+      setToast({ message: 'Ayarlar başarıyla kaydedildi!', type: 'success' })
+    } catch (err: any) {
+      setError(err.message || 'Ayarlar kaydedilirken bir hata oluştu')
+      setToast({ message: err.message || 'Ayarlar kaydedilirken bir hata oluştu', type: 'error' })
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1031,18 +1107,210 @@ export default function AdminPage() {
 
           {/* Ayarlar Görünümü */}
           {viewMode === 'settings' && (
-            <div className="max-w-2xl mx-auto">
-              <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
-                <h2 className="text-2xl font-serif font-bold text-navy-900 mb-6">Ayarlar</h2>
-                <div className="space-y-4">
-                  <div className="p-4 bg-anthracite-50 rounded-lg">
-                    <h3 className="font-semibold text-anthracite-900 mb-2">Bilgi</h3>
-                    <p className="text-sm text-anthracite-600">
-                      Bu bölüm yakında eklenecektir. Şu anda ürün yönetimi için admin paneli kullanılabilir.
-                    </p>
-                  </div>
+            <div className="max-w-4xl mx-auto space-y-6">
+              {!settings ? (
+                <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-12 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-600 mx-auto mb-4"></div>
+                  <p className="text-anthracite-600">Ayarlar yükleniyor...</p>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* İletişim Bilgileri */}
+                  <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-navy-100 rounded-lg">
+                        <Phone className="w-5 h-5 text-navy-600" />
+                      </div>
+                      <h2 className="text-xl font-serif font-bold text-navy-900">İletişim Bilgileri</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Telefon
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.phone || ''}
+                          onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="+90 553 588 69 36"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          WhatsApp
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.whatsapp || ''}
+                          onChange={(e) => setSettings({ ...settings, whatsapp: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="+90 553 588 69 36"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          E-posta
+                        </label>
+                        <input
+                          type="email"
+                          value={settings.email || ''}
+                          onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="info@omytic.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Adres
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.address || ''}
+                          onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="Adres bilgisi"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sosyal Medya */}
+                  <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-gold-100 rounded-lg">
+                        <Instagram className="w-5 h-5 text-gold-600" />
+                      </div>
+                      <h2 className="text-xl font-serif font-bold text-navy-900">Sosyal Medya</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Instagram Profil Linki
+                        </label>
+                        <input
+                          type="url"
+                          value={settings.instagram || ''}
+                          onChange={(e) => setSettings({ ...settings, instagram: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="https://instagram.com/..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          LinkedIn Profil Linki
+                        </label>
+                        <input
+                          type="url"
+                          value={settings.linkedin || ''}
+                          onChange={(e) => setSettings({ ...settings, linkedin: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="https://linkedin.com/company/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Duyuru Yönetimi */}
+                  <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-anthracite-100 rounded-lg">
+                        <Bell className="w-5 h-5 text-anthracite-600" />
+                      </div>
+                      <h2 className="text-xl font-serif font-bold text-navy-900">Duyuru Yönetimi</h2>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Duyuru Metni
+                        </label>
+                        <textarea
+                          value={settings.announcement_text || ''}
+                          onChange={(e) => setSettings({ ...settings, announcement_text: e.target.value })}
+                          rows={3}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all resize-none"
+                          placeholder="Ana sayfanın en üstünde görünecek duyuru metni..."
+                        />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-anthracite-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-anthracite-900 mb-1">Duyuruyu Göster</p>
+                          <p className="text-sm text-anthracite-600">Ana sayfanın en üstünde duyuru metni görünsün mü?</p>
+                        </div>
+                        <button
+                          onClick={() => setSettings({ ...settings, announcement_visible: !settings.announcement_visible })}
+                          className="flex items-center gap-2"
+                        >
+                          {settings.announcement_visible ? (
+                            <ToggleRight className="w-10 h-10 text-gold-600" />
+                          ) : (
+                            <ToggleLeft className="w-10 h-10 text-anthracite-400" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SEO */}
+                  <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-navy-100 rounded-lg">
+                        <Globe className="w-5 h-5 text-navy-600" />
+                      </div>
+                      <h2 className="text-xl font-serif font-bold text-navy-900">SEO Ayarları</h2>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Site Başlığı (Title)
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.site_title || ''}
+                          onChange={(e) => setSettings({ ...settings, site_title: e.target.value })}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
+                          placeholder="OMY Ticaret - Kaliteli Toptan Ticaret"
+                        />
+                        <p className="text-xs text-anthracite-500 mt-1">Tarayıcı sekmesinde görünecek başlık</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-anthracite-700 mb-2">
+                          Site Açıklaması (Description)
+                        </label>
+                        <textarea
+                          value={settings.site_description || ''}
+                          onChange={(e) => setSettings({ ...settings, site_description: e.target.value })}
+                          rows={4}
+                          className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all resize-none"
+                          placeholder="Arama motorlarında görünecek site açıklaması..."
+                        />
+                        <p className="text-xs text-anthracite-500 mt-1">Arama motorlarında görünecek açıklama (150-160 karakter önerilir)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Kaydet Butonu */}
+                  <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-6">
+                    <button
+                      onClick={handleSaveSettings}
+                      disabled={settingsLoading}
+                      className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-navy-900 font-semibold rounded-lg transition-all shadow-luxury hover:shadow-luxury-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {settingsLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-navy-900"></div>
+                          <span>Kaydediliyor...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-5 h-5" />
+                          <span>Ayarları Kaydet</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
