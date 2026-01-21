@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { 
   Lock, X, Plus, Edit2, Trash2, Upload, CheckCircle, AlertCircle, 
   Package, Settings, LogOut, Menu, Home, Image as ImageIcon, 
@@ -27,8 +28,9 @@ type ViewMode = 'dashboard' | 'products' | 'add' | 'settings'
 type ProductViewMode = 'grid' | 'table'
 
 export default function AdminPage() {
+  const router = useRouter()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [password, setPassword] = useState('')
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -57,15 +59,54 @@ export default function AdminPage() {
     features: '',
   })
 
-  // Basit şifre kontrolü
+  // Supabase Auth kontrolü
   useEffect(() => {
-    const stored = sessionStorage.getItem('admin_authenticated')
-    if (stored === 'true') {
-      setIsAuthenticated(true)
-      fetchProducts()
-      fetchSettings()
+    checkAuth()
+    
+    // Auth state değişikliklerini dinle
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        setIsAuthenticated(false)
+        router.push('/login')
+      } else if (session?.user?.email === 'info@omytic.com') {
+        setIsAuthenticated(true)
+        fetchProducts()
+        fetchSettings()
+      } else {
+        setIsAuthenticated(false)
+        router.push('/login')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
     }
   }, [])
+
+  const checkAuth = async () => {
+    try {
+      setIsCheckingAuth(true)
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) throw error
+
+      // Sadece info@omytic.com e-posta adresine izin ver
+      if (session?.user?.email === 'info@omytic.com') {
+        setIsAuthenticated(true)
+        fetchProducts()
+        fetchSettings()
+      } else {
+        setIsAuthenticated(false)
+        router.push('/login')
+      }
+    } catch (err: any) {
+      console.error('Auth kontrolü hatası:', err)
+      setIsAuthenticated(false)
+      router.push('/login')
+    } finally {
+      setIsCheckingAuth(false)
+    }
+  }
 
   const fetchSettings = async () => {
     try {
@@ -139,28 +180,17 @@ export default function AdminPage() {
     }
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    
-    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123'
-    
-    if (password === adminPassword) {
-      setIsAuthenticated(true)
-      sessionStorage.setItem('admin_authenticated', 'true')
-      fetchProducts()
-      setPassword('')
-    } else {
-      setError('Yanlış şifre!')
-      setPassword('')
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      
+      setIsAuthenticated(false)
+      setViewMode('products')
+      router.push('/login')
+    } catch (err: any) {
+      setError(err.message || 'Çıkış yapılırken bir hata oluştu')
     }
-  }
-
-  const handleLogout = () => {
-    setIsAuthenticated(false)
-    sessionStorage.removeItem('admin_authenticated')
-    setPassword('')
-    setViewMode('products')
   }
 
   const fetchProducts = async () => {
@@ -389,53 +419,21 @@ export default function AdminPage() {
     lastAdded: products[0]?.name || 'Henüz ürün yok'
   }
 
-  // Giriş ekranı
-  if (!isAuthenticated) {
+  // Auth kontrolü yapılıyorsa loading göster
+  if (isCheckingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-navy-50 to-anthracite-50">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md bg-white rounded-2xl shadow-luxury-xl p-8 border border-anthracite-100"
-        >
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-navy-900 to-anthracite-900 text-gold-400 mb-4">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h1 className="text-2xl font-serif font-bold text-navy-900">
-              Admin Paneli
-            </h1>
-            <p className="text-anthracite-600 mt-2 text-sm">Lütfen şifrenizi girin</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </div>
-            )}
-            <div>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Şifre"
-                className="w-full px-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
-                required
-                autoFocus
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full px-4 py-3 bg-gradient-to-r from-navy-900 to-anthracite-900 hover:from-navy-800 hover:to-anthracite-800 text-white font-semibold rounded-lg transition-all shadow-luxury hover:shadow-luxury-lg"
-            >
-              Giriş Yap
-            </button>
-          </form>
-        </motion.div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gold-600 mx-auto mb-4"></div>
+          <p className="text-anthracite-600">Yükleniyor...</p>
+        </div>
       </div>
     )
+  }
+
+  // Giriş yapılmamışsa login sayfasına yönlendir (bu durumda zaten yönlendirilmiş olmalı)
+  if (!isAuthenticated) {
+    return null
   }
 
   // Ana admin paneli
