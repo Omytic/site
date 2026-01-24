@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS settings (
   
   -- Duyuru Yönetimi
   announcement_text TEXT,
-  announcement_visible BOOLEAN DEFAULT false,
+  announcement_active BOOLEAN DEFAULT false,
   
   -- SEO
   site_title TEXT,
@@ -51,7 +51,7 @@ CREATE POLICY "Public update access" ON settings
 INSERT INTO settings (
   phone, whatsapp, email, address,
   instagram, linkedin,
-  announcement_text, announcement_visible,
+  announcement_text, announcement_active,
   site_title, site_description
 ) VALUES (
   '+90 553 588 69 36',

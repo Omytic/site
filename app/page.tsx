@@ -8,6 +8,9 @@ import ProductModal from '@/components/ProductModal'
 import Footer from '@/components/Footer'
 import Logo from '@/components/Logo'
 import { supabase } from '@/lib/supabase'
+import { useSettings } from '@/lib/useSettings'
+import { X } from 'lucide-react'
+import SEOHead from '@/components/SEOHead'
 
 interface Product {
   id: string
@@ -20,12 +23,14 @@ interface Product {
 }
 
 export default function Home() {
+  const { settings, loading: settingsLoading } = useSettings()
   const [fabrics, setFabrics] = useState<Product[]>([])
   const [otherProducts, setOtherProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [announcementDismissed, setAnnouncementDismissed] = useState(false)
 
   useEffect(() => {
     fetchProducts()
@@ -78,7 +83,28 @@ export default function Home() {
 
   return (
     <main className="min-h-screen">
+      <SEOHead />
       <Navigation />
+      
+      {/* Duyuru Banner */}
+      {settings.announcement_active && settings.announcement_text && !announcementDismissed && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-gold-600 to-gold-500 text-navy-900 py-3 px-6 relative z-40"
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <p className="text-sm font-medium flex-1 text-center">{settings.announcement_text}</p>
+            <button
+              onClick={() => setAnnouncementDismissed(true)}
+              className="p-1 hover:bg-navy-900/10 rounded transition-colors flex-shrink-0"
+              aria-label="Duyuruyu kapat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Hero Section */}
       <section id="ana-sayfa" className="relative min-h-screen flex items-center bg-gradient-to-br from-navy-950 via-navy-900 to-anthracite-900 text-white overflow-hidden pt-20">
@@ -138,7 +164,7 @@ export default function Home() {
                 <ChevronDown className="w-5 h-5 group-hover:translate-y-1 transition-transform" />
               </a>
               <a
-                href="https://wa.me/905535886936?text=Merhaba,%20OMY%20Ticaret%20hakkında%20bilgi%20almak%20istiyorum."
+                href={`https://wa.me/${settings.whatsapp?.replace(/[^0-9]/g, '') || '905535886936'}?text=Merhaba,%20OMY%20Ticaret%20hakkında%20bilgi%20almak%20istiyorum.`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2 px-8 py-4 border-2 border-white/30 hover:border-white/50 text-white font-semibold rounded-lg transition-all duration-300 backdrop-blur-sm hover:bg-white/10"
@@ -416,7 +442,7 @@ export default function Home() {
               <div className="space-y-6">
                 {/* E-posta */}
                 <a
-                  href="mailto:info@omytic.com?subject=İletişim%20Talebi&body=Merhaba,%20"
+                  href={`mailto:${settings.email || 'info@omytic.com'}?subject=İletişim%20Talebi&body=Merhaba,%20`}
                   className="flex items-start gap-4 p-6 bg-white rounded-xl shadow-luxury hover:shadow-luxury-lg transition-all duration-300 group border border-anthracite-100 hover:border-gold-300/50"
                 >
                   <div className="w-12 h-12 rounded-lg bg-gold-600/10 group-hover:bg-gold-600/20 flex items-center justify-center flex-shrink-0 transition-colors">
@@ -425,14 +451,14 @@ export default function Home() {
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold text-anthracite-500 mb-1">E-posta</h3>
                     <p className="text-lg font-medium text-navy-900 group-hover:text-gold-600 transition-colors">
-                      info@omytic.com
+                      {settings.email || 'info@omytic.com'}
                     </p>
                   </div>
                 </a>
 
                 {/* Telefon */}
                 <a
-                  href="tel:+905535886936"
+                  href={`tel:${settings.phone?.replace(/\s/g, '') || '+905535886936'}`}
                   className="flex items-start gap-4 p-6 bg-white rounded-xl shadow-luxury hover:shadow-luxury-lg transition-all duration-300 group border border-anthracite-100 hover:border-gold-300/50"
                 >
                   <div className="w-12 h-12 rounded-lg bg-gold-600/10 group-hover:bg-gold-600/20 flex items-center justify-center flex-shrink-0 transition-colors">
@@ -441,14 +467,14 @@ export default function Home() {
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold text-anthracite-500 mb-1">Telefon</h3>
                     <p className="text-lg font-medium text-navy-900 group-hover:text-gold-600 transition-colors">
-                      +90 553 588 69 36
+                      {settings.phone || '+90 553 588 69 36'}
                     </p>
                   </div>
                 </a>
 
                 {/* WhatsApp */}
                 <a
-                  href="https://wa.me/905535886936?text=Merhaba,%20OMY%20Ticaret%20hakkında%20bilgi%20almak%20istiyorum."
+                  href={`https://wa.me/${settings.whatsapp?.replace(/[^0-9]/g, '') || '905535886936'}?text=Merhaba,%20OMY%20Ticaret%20hakkında%20bilgi%20almak%20istiyorum.`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-start gap-4 p-6 bg-white rounded-xl shadow-luxury hover:shadow-luxury-lg transition-all duration-300 group border border-anthracite-100 hover:border-gold-300/50"
@@ -481,7 +507,7 @@ export default function Home() {
                   const message = (e.currentTarget.elements.namedItem('message') as HTMLTextAreaElement).value
                   const subject = encodeURIComponent('İletişim Formu - OMY Ticaret')
                   const body = encodeURIComponent(`Ad-Soyad: ${name}\n\nMesaj:\n${message}`)
-                  window.location.href = `mailto:info@omytic.com?subject=${subject}&body=${body}`
+                  window.location.href = `mailto:${settings.email || 'info@omytic.com'}?subject=${subject}&body=${body}`
                 }}
                 className="bg-white rounded-xl shadow-luxury-lg p-6 sm:p-8 border border-anthracite-100 space-y-6"
               >

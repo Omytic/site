@@ -114,9 +114,13 @@ export default function AdminPage() {
         .from('settings')
         .select('*')
         .limit(1)
-        .single()
+        .maybeSingle()
 
-      if (error && error.code !== 'PGRST116') throw error
+      // Hata varsa ve "no rows" hatası değilse fırlat
+      if (error && error.code !== 'PGRST116') {
+        console.error('Settings fetch error:', error)
+        // Hata olsa bile varsayılan değerleri göster
+      }
       
       if (data) {
         setSettings(data)
@@ -130,13 +134,26 @@ export default function AdminPage() {
           instagram: '',
           linkedin: '',
           announcement_text: '',
-          announcement_visible: false,
+          announcement_active: false,
           site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
           site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
         })
       }
     } catch (err: any) {
       console.error('Ayarlar yüklenirken hata:', err)
+      // Hata durumunda bile varsayılan değerleri göster
+      setSettings({
+        phone: '+90 553 588 69 36',
+        whatsapp: '+90 553 588 69 36',
+        email: 'info@omytic.com',
+        address: '',
+        instagram: '',
+        linkedin: '',
+        announcement_text: '',
+        announcement_active: false,
+        site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
+        site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
+      })
     }
   }
 
@@ -147,34 +164,66 @@ export default function AdminPage() {
     setError('')
     
     try {
-      // Önce var mı kontrol et
+      // Upsert mantığı: Önce var mı kontrol et
       const { data: existing } = await supabase
         .from('settings')
         .select('id')
         .limit(1)
-        .single()
+        .maybeSingle()
 
-      if (existing) {
+      let result
+      if (existing?.id) {
         // Güncelle
-        const { error } = await supabase
+        result = await supabase
           .from('settings')
-          .update(settings)
+          .update({
+            phone: settings.phone || null,
+            whatsapp: settings.whatsapp || null,
+            email: settings.email || null,
+            address: settings.address || null,
+            instagram: settings.instagram || null,
+            linkedin: settings.linkedin || null,
+            announcement_text: settings.announcement_text || null,
+            announcement_active: settings.announcement_active || false,
+            site_title: settings.site_title || null,
+            site_description: settings.site_description || null,
+          })
           .eq('id', existing.id)
-
-        if (error) throw error
+          .select()
+          .single()
       } else {
         // Yeni oluştur
-        const { error } = await supabase
+        result = await supabase
           .from('settings')
-          .insert([settings])
-
-        if (error) throw error
+          .insert([{
+            phone: settings.phone || null,
+            whatsapp: settings.whatsapp || null,
+            email: settings.email || null,
+            address: settings.address || null,
+            instagram: settings.instagram || null,
+            linkedin: settings.linkedin || null,
+            announcement_text: settings.announcement_text || null,
+            announcement_active: settings.announcement_active || false,
+            site_title: settings.site_title || null,
+            site_description: settings.site_description || null,
+          }])
+          .select()
+          .single()
       }
 
-      setToast({ message: 'Ayarlar başarıyla kaydedildi!', type: 'success' })
+      if (result.error) throw result.error
+
+      // Güncellenmiş veriyi state'e kaydet
+      if (result.data) {
+        setSettings(result.data)
+      }
+
+      setSuccessMessage('Ayarlar başarıyla güncellendi!')
+      setToast({ message: 'Ayarlar başarıyla güncellendi!', type: 'success' })
     } catch (err: any) {
-      setError(err.message || 'Ayarlar kaydedilirken bir hata oluştu')
-      setToast({ message: err.message || 'Ayarlar kaydedilirken bir hata oluştu', type: 'error' })
+      const errorMsg = err.message || 'Ayarlar kaydedilirken bir hata oluştu'
+      setError(errorMsg)
+      setToast({ message: errorMsg, type: 'error' })
     } finally {
       setSettingsLoading(false)
     }
@@ -1236,10 +1285,10 @@ export default function AdminPage() {
                           <p className="text-sm text-anthracite-600">Ana sayfanın en üstünde duyuru metni görünsün mü?</p>
                         </div>
                         <button
-                          onClick={() => setSettings({ ...settings, announcement_visible: !settings.announcement_visible })}
+                          onClick={() => setSettings({ ...settings, announcement_active: !settings.announcement_active })}
                           className="flex items-center gap-2"
                         >
-                          {settings.announcement_visible ? (
+                          {settings.announcement_active ? (
                             <ToggleRight className="w-10 h-10 text-gold-600" />
                           ) : (
                             <ToggleLeft className="w-10 h-10 text-anthracite-400" />
