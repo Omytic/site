@@ -46,8 +46,20 @@ export default function AdminPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [showFormSheet, setShowFormSheet] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const [settings, setSettings] = useState<any>(null)
+  const [settings, setSettings] = useState<any>({
+    phone: '+90 553 588 69 36',
+    whatsapp: '+90 553 588 69 36',
+    email: 'info@omytic.com',
+    address: '',
+    instagram: '',
+    linkedin: '',
+    announcement_text: '',
+    announcement_active: false,
+    site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
+    site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
+  })
   const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsInitialized, setSettingsInitialized] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -124,36 +136,15 @@ export default function AdminPage() {
       
       if (data) {
         setSettings(data)
-      } else {
-        // İlk kez oluşturuluyorsa varsayılan değerler
-        setSettings({
-          phone: '+90 553 588 69 36',
-          whatsapp: '+90 553 588 69 36',
-          email: 'info@omytic.com',
-          address: '',
-          instagram: '',
-          linkedin: '',
-          announcement_text: '',
-          announcement_active: false,
-          site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
-          site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
-        })
       }
+      // Eğer veri yoksa varsayılan değerler zaten state'te
+    } finally {
+      setSettingsInitialized(true)
     } catch (err: any) {
       console.error('Ayarlar yüklenirken hata:', err)
-      // Hata durumunda bile varsayılan değerleri göster
-      setSettings({
-        phone: '+90 553 588 69 36',
-        whatsapp: '+90 553 588 69 36',
-        email: 'info@omytic.com',
-        address: '',
-        instagram: '',
-        linkedin: '',
-        announcement_text: '',
-        announcement_active: false,
-        site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
-        site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
-      })
+      // Hata durumunda varsayılan değerler zaten state'te
+    } finally {
+      setSettingsInitialized(true)
     }
   }
 
@@ -1155,7 +1146,7 @@ export default function AdminPage() {
           {/* Ayarlar Görünümü */}
           {viewMode === 'settings' && (
             <div className="max-w-4xl mx-auto space-y-6">
-              {!settings ? (
+              {!settingsInitialized ? (
                 <div className="bg-white rounded-xl shadow-luxury border border-anthracite-100 p-12 text-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-600 mx-auto mb-4"></div>
                   <p className="text-anthracite-600">Ayarlar yükleniyor...</p>
