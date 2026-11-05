@@ -26,7 +26,7 @@ const defaultSettings: Settings = {
   linkedin: '',
   announcement_text: '',
   announcement_active: false,
-  site_title: 'OMY Ticaret - Kaliteli Toptan Ticaret',
+  site_title: 'OMY Ticaret | Toptan Kumaş Ticareti',
   site_description: 'OMY Ticaret; kaliteli ürün yelpazesi ve hızlı tedarik zinciriyle, müşterilerinin ihtiyaçlarına özel çözümler sunan güvenilir bir iş ortağıdır.'
 }
 

@@ -1,28 +1,68 @@
 'use client'
 
+import { useState } from 'react'
+import { Menu, X } from 'lucide-react'
 import Logo from './Logo'
-import { Heart } from 'lucide-react'
 
-export default function Navigation() {
+const links = [
+  { href: '#kumaslar', label: 'Kumaşlar' },
+  { href: '#nasil-calisiyoruz', label: 'Nasıl çalışıyoruz' },
+  { href: '#markalarimiz', label: 'Markalarımız' },
+  { href: '#iletisim', label: 'İletişim' },
+]
+
+export default function Navigation({ whatsappHref }: { whatsappHref: string }) {
+  const [open, setOpen] = useState(false)
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-anthracite-100 shadow-luxury">
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12">
-        <div className="flex items-center justify-between h-20">
-          {/* Sol taraf - boş alan */}
-          <div className="w-20"></div>
-          
-          {/* Logo - ortada */}
-          <a href="#ana-sayfa" className="flex items-center hover:opacity-80 transition-opacity">
-            <Logo variant="dark" size="sm" />
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-line bg-paper/90 backdrop-blur">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-8 lg:px-12">
+        <a href="#ana-sayfa" aria-label="OMY Ticaret ana sayfa">
+          <Logo size="sm" />
+        </a>
+        <ul className="hidden items-center gap-8 md:flex">
+          {links.map((l) => (
+            <li key={l.href}>
+              <a href={l.href} className="text-sm font-medium text-stone transition-colors hover:text-ink">
+                {l.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-center gap-2">
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-ink-soft sm:inline-flex"
+          >
+            Teklif al
           </a>
-          
-          {/* Sağ taraf - F harfi ve kalp */}
-          <div className="flex items-center gap-1 text-xs text-anthracite-400 w-20 justify-end">
-            <span className="text-[10px]">F</span>
-            <Heart className="w-3 h-3" strokeWidth={1.5} fill="none" />
-          </div>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="-mr-2 p-2 text-ink md:hidden"
+            aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
+            aria-expanded={open}
+          >
+            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
         </div>
-      </div>
-    </nav>
+      </nav>
+      {open && (
+        <ul className="border-t border-line bg-paper px-4 pb-4 md:hidden">
+          {links.map((l) => (
+            <li key={l.href}>
+              <a href={l.href} onClick={() => setOpen(false)} className="block border-b border-line py-3.5 font-medium text-ink">
+                {l.label}
+              </a>
+            </li>
+          ))}
+          <li className="pt-4">
+            <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="block rounded-full bg-ink py-3 text-center font-semibold text-white">
+              WhatsApp'tan teklif al
+            </a>
+          </li>
+        </ul>
+      )}
+    </header>
   )
 }

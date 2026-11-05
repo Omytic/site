@@ -1,31 +1,15 @@
 import type { Metadata } from 'next'
-import { Inter, Playfair_Display } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-})
-
-const playfair = Playfair_Display({
-  subsets: ['latin'],
-  variable: '--font-playfair',
-  display: 'swap',
-})
-
 export const metadata: Metadata = {
-  title: 'Omytic - Kurumsal Vitrin',
-  description: 'Modern ve şık kurumsal vitrin sitesi',
+  title: 'OMY Ticaret | Toptan Kumaş Ticareti',
+  description:
+    'OMY Ticaret: toptan kumaş ticareti, geniş kumaş yelpazesi ve hızlı tedarik. FormStep ve SERYN markalarının da çatısı.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" className={`${inter.variable} ${playfair.variable}`}>
+    <html lang="tr">
       <body>{children}</body>
     </html>
   )

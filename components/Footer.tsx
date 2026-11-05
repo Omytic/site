@@ -1,22 +1,14 @@
-'use client'
-
-import { motion } from 'framer-motion'
+import Logo from './Logo'
 
 export default function Footer() {
   return (
-    <footer className="bg-gradient-to-br from-navy-900 to-anthracite-900 text-white">
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-12 py-8">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.5 }}
-          className="text-center"
-        >
-          <p className="text-sm text-navy-300">
-            © 2026 OMY Ticaret. Tüm Hakları Saklıdır.
-          </p>
-        </motion.div>
+    <footer className="bg-ink text-white/60">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
+        <Logo variant="light" size="sm" />
+        <p className="text-sm">
+          Toptan kumaş ticareti, FormStep ve SERYN
+        </p>
+        <p className="text-sm">© {new Date().getFullYear()} OMY Ticaret</p>
       </div>
     </footer>
   )

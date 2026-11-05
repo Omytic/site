@@ -138,8 +138,6 @@ export default function AdminPage() {
         setSettings(data)
       }
       // Eğer veri yoksa varsayılan değerler zaten state'te
-    } finally {
-      setSettingsInitialized(true)
     } catch (err: any) {
       console.error('Ayarlar yüklenirken hata:', err)
       // Hata durumunda varsayılan değerler zaten state'te

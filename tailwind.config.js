@@ -8,7 +8,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Clean Luxury Color Palette
+        // OMY — gece laciverti + altın iplik
+        night: { DEFAULT: '#080D1A', 2: '#0D1528', 3: '#141E36' },
+        thread: { DEFAULT: '#E3AB3B', soft: '#F4D48A', deep: '#B9861F' },
+        paper: '#F3F1EC',
+        ink: { DEFAULT: '#0E1527', soft: '#2B3550' },
+        mist: '#8E97AD',
+        line: '#E2DFD7',
+        // FormStep marka renkleri (formstep.tr ile aynı)
+        fs: { night: '#060A16', navy: '#0E1A36', blue: '#2477EA', sky: '#4EA1E1', ice: '#E7EDF5' },
+        // SERYN marka renkleri (seryn.com.tr ile aynı)
+        seryn: { tan: '#EDE5DD', tanAlt: '#F5F0EB', ink: '#3A3A3A', gray: '#5C5A5A', terra: '#B85C4E', mint: '#CDDAD3' },
+        // Eski palet — admin paneli kullanıyor
         navy: {
           50: '#f0f4f8',
           100: '#d9e2ec',
@@ -68,8 +79,24 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        serif: ['var(--font-playfair)', 'Georgia', 'serif'],
+        sans: ['Manrope', 'system-ui', 'sans-serif'],
+        display: ['Archivo', 'system-ui', 'sans-serif'],
+        serif: ['Archivo', 'system-ui', 'sans-serif'],
+        seryn: ['"Montserrat Variable"', 'Montserrat', 'system-ui', 'sans-serif'],
+      },
+      keyframes: {
+        marquee: { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(-50%)' } },
+        'col-up': { from: { transform: 'translateY(0)' }, to: { transform: 'translateY(-50%)' } },
+        'col-down': { from: { transform: 'translateY(-50%)' }, to: { transform: 'translateY(0)' } },
+        shine: { '0%': { transform: 'translateX(-120%) skewX(-20deg)' }, '60%,100%': { transform: 'translateX(260%) skewX(-20deg)' } },
+        ping2: { '0%': { transform: 'scale(1)', opacity: '0.7' }, '80%,100%': { transform: 'scale(2.6)', opacity: '0' } },
+      },
+      animation: {
+        marquee: 'marquee 38s linear infinite',
+        'col-up': 'col-up 46s linear infinite',
+        'col-down': 'col-down 52s linear infinite',
+        shine: 'shine 3.6s ease-in-out infinite',
+        ping2: 'ping2 2s cubic-bezier(0,0,0.2,1) infinite',
       },
       spacing: {
         '18': '4.5rem',
