@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Plug,
   Megaphone,
   Menu,
   PackagePlus,
@@ -54,7 +55,13 @@ const NAV: { group: string; items: { href: string; label: string; icon: typeof B
       { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History },
     ],
   },
-  { group: 'Site', items: [{ href: '/admin/vitrin', label: 'Vitrin', icon: Store }] },
+  {
+    group: 'Site',
+    items: [
+      { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug },
+      { href: '/admin/vitrin', label: 'Vitrin', icon: Store },
+    ],
+  },
 ]
 
 const QUICK = [

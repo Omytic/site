@@ -854,6 +854,11 @@ begin
     drop policy if exists "Public insert access" on public.products;
     drop policy if exists "Public update access" on public.products;
     drop policy if exists "Public delete access" on public.products;
+    -- Canlı veritabanında elle eklenmiş adlar
+    drop policy if exists "public insert products" on public.products;
+    drop policy if exists "public update products" on public.products;
+    drop policy if exists "public delete products" on public.products;
+    drop policy if exists "Enable insert for authenticated users only" on public.products;
     drop policy if exists panel_write on public.products;
     create policy panel_write on public.products for all to authenticated
       using (public.is_panel_user() or auth.jwt() ->> 'email' = 'info@omytic.com')

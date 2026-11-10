@@ -9,6 +9,9 @@ declare
   uid uuid;
   v_password text := ':SIFRE';
 begin
+  if v_password = ':SIFRE' or length(v_password) < 6 then
+    raise exception 'Önce :SIFRE yerine şifreyi yazın';
+  end if;
   for u in
     select * from (values ('yunus', 'Yunus', '#E3AB3B'), ('yusuf', 'Yusuf', '#4EA1E1'), ('omer', 'Ömer', '#B85C4E')) as v(username, full_name, color)
   loop
