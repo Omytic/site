@@ -1,179 +1,120 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
-import Logo from '@/components/Logo'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { usernameToEmail } from '@/lib/panel/auth'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const params = useSearchParams()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [error, setError] = useState(params.get('yetki') === 'yok' ? 'Bu hesabın panele erişimi yok.' : '')
 
   useEffect(() => {
-    // Eğer zaten giriş yapılmışsa admin paneline yönlendir
-    checkAuth()
-  }, [])
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) router.replace('/admin')
+    })
+  }, [router])
 
-  const checkAuth = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user?.email === 'info@omytic.com') {
-        router.push('/admin')
-      }
-    } catch (err) {
-      console.error('Auth kontrolü hatası:', err)
-    }
-  }
-
-  const handleLogin = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setMessage('')
     setLoading(true)
-
-    try {
-      // E-posta kontrolü
-      if (email !== 'info@omytic.com') {
-        setError('Bu e-posta adresi ile giriş yapılamaz. Sadece yetkili kullanıcılar giriş yapabilir.')
-        setLoading(false)
-        return
-      }
-
-      // Supabase Auth ile giriş
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
-      })
-
-      if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
-          setError('E-posta veya şifre hatalı!')
-        } else {
-          setError(authError.message)
-        }
-        setLoading(false)
-        return
-      }
-
-      // E-posta doğrulaması kontrolü
-      if (data.user && !data.user.email_confirmed_at) {
-        setError('Lütfen e-posta adresinizi doğrulayın.')
-        setLoading(false)
-        return
-      }
-
-      // Başarılı giriş - admin paneline yönlendir
-      setMessage('Giriş başarılı! Yönlendiriliyorsunuz...')
-      setTimeout(() => {
-        router.push('/admin')
-      }, 500)
-
-    } catch (err: any) {
-      setError(err.message || 'Giriş yapılırken bir hata oluştu')
+    const { error } = await supabase.auth.signInWithPassword({ email: usernameToEmail(username), password })
+    if (error) {
       setLoading(false)
+      setError(error.message.includes('Invalid login') ? 'Kullanıcı adı ya da şifre hatalı.' : 'Giriş yapılamadı. Biraz sonra tekrar deneyin.')
+      return
     }
+    router.replace('/admin')
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-navy-50 to-anthracite-50">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white rounded-2xl shadow-luxury-xl p-8 border border-anthracite-100"
-      >
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-navy-900 to-anthracite-900 text-gold-400 mb-4">
-            <Lock className="w-8 h-8" />
-          </div>
-          <div className="mb-4 flex justify-center">
-            <Logo variant="dark" size="sm" />
-          </div>
-          <h1 className="text-2xl font-serif font-bold text-navy-900">
-            Admin Paneli Girişi
-          </h1>
-          <p className="text-anthracite-600 mt-2 text-sm">Lütfen e-posta ve şifrenizi girin</p>
-        </div>
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-          {message && (
-            <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {message}
-            </div>
-          )}
-          
-          <div>
-            <label className="block text-sm font-medium text-anthracite-700 mb-2">
-              E-posta
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-anthracite-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="info@omytic.com"
-                className="w-full pl-10 pr-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
-                required
-                autoFocus
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-anthracite-700 mb-2">
-              Şifre
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-anthracite-400" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Şifrenizi girin"
-                className="w-full pl-10 pr-4 py-3 border border-anthracite-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
-                required
-              />
-            </div>
-          </div>
-
+    <form onSubmit={submit} className="space-y-4">
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-semibold text-white/70">Kullanıcı adı</span>
+        <input
+          autoFocus
+          required
+          autoComplete="username"
+          autoCapitalize="none"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="yunus, yusuf ya da omer"
+          className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 text-white outline-none transition placeholder:text-white/30 focus:border-thread/60 focus:bg-white/[0.08]"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block text-sm font-semibold text-white/70">Şifre</span>
+        <span className="relative block">
+          <input
+            required
+            type={show ? 'text' : 'password'}
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 pr-12 text-white outline-none transition focus:border-thread/60 focus:bg-white/[0.08]"
+          />
           <button
-            type="submit"
-            disabled={loading}
-            className="w-full px-4 py-3 bg-gradient-to-r from-navy-900 to-anthracite-900 hover:from-navy-800 hover:to-anthracite-800 text-white font-semibold rounded-lg transition-all shadow-luxury hover:shadow-luxury-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-white/50 hover:text-white"
+            aria-label={show ? 'Şifreyi gizle' : 'Şifreyi göster'}
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Giriş yapılıyor...</span>
-              </>
-            ) : (
-              'Giriş Yap'
-            )}
+            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
-        </form>
+        </span>
+      </label>
+      {error && (
+        <p className="flex items-center gap-2 rounded-xl bg-[#d03b3b]/15 px-3.5 py-2.5 text-sm font-medium text-[#ffb4b4]">
+          <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+        </p>
+      )}
+      <button
+        type="submit"
+        disabled={loading}
+        className="group relative mt-2 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-b from-thread-soft to-thread font-bold text-night shadow-[0_10px_40px_-10px_rgba(227,171,59,0.7)] transition disabled:opacity-70"
+      >
+        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Giriş yap <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></>}
+      </button>
+    </form>
+  )
+}
 
-        <div className="mt-6 text-center">
-          <a
-            href="/"
-            className="text-sm text-anthracite-600 hover:text-navy-900 transition-colors"
-          >
-            ← Ana Sayfaya Dön
-          </a>
+export default function LoginPage() {
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-night px-4 font-sans text-white">
+      <div aria-hidden className="weave absolute inset-0" />
+      <div aria-hidden className="absolute -right-32 -top-32 h-[480px] w-[480px] rounded-full bg-thread/15 blur-[140px]" />
+      <div aria-hidden className="absolute -bottom-40 -left-20 h-[420px] w-[420px] rounded-full bg-[#2a78d6]/10 blur-[140px]" />
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-full max-w-sm"
+      >
+        <div className="mb-8 text-center">
+          <span className="inline-flex items-baseline gap-2">
+            <span className="font-display text-5xl font-black tracking-[-0.04em]">OMY</span>
+            <span className="h-2.5 w-2.5 rounded-full bg-thread" />
+          </span>
+          <p className="mt-2 text-white/55">Stok, satış ve finans paneli</p>
         </div>
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-xl sm:p-7">
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+        <p className="mt-6 text-center text-xs text-white/35">
+          <a href="/" className="hover:text-white/70">omytic.com'a dön</a>
+        </p>
       </motion.div>
-    </div>
+    </main>
   )
 }

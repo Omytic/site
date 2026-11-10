@@ -1,0 +1,361 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { Pencil, ShoppingBag, Trash2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/panel/auth'
+import { CHANNELS, colorOf, label, PAYMENT_STATUS, SALE_STATUS, type Channel } from '@/lib/panel/constants'
+import { AFTER, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
+import { addDays, dateTR, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
+import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
+import { emptyLine, LinesEditor, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { Badge, Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
+
+type Range = '30' | '90' | '365' | 'all'
+
+const saleTotal = (s: Sale) => s.sale_items.reduce((a, l) => a + Number(l.qty) * Number(l.unit_price), 0)
+
+export default function SalesPage() {
+  const sales = Q.sales()
+  const { data: items } = useItemsWithStock()
+  const { byId } = useAuth()
+  const { toast, confirm } = useUi()
+  const [range, setRange] = useState<Range>('90')
+  const [channel, setChannel] = useState<'all' | Channel>('all')
+  const [q, setQ] = useState('')
+  const [editing, setEditing] = useState<Sale | 'new' | null>(null)
+  const page = useShowMore(50)
+  useOpenFromQuery(() => setEditing('new'))
+
+  const list = useMemo(() => {
+    const from = range === 'all' ? '0000' : addDays(today(), -Number(range))
+    return (sales.data ?? []).filter(
+      (s) =>
+        s.sale_date >= from &&
+        (channel === 'all' || s.channel === channel) &&
+        (!q || norm(`${s.order_no ?? ''} ${s.customer ?? ''} ${s.note ?? ''}`).includes(norm(q))),
+    )
+  }, [sales.data, range, channel, q])
+
+  const done = list.filter((s) => s.status === 'tamamlandi')
+  const revenue = done.reduce((a, s) => a + saleTotal(s), 0)
+  const units = done.reduce((a, s) => a + s.sale_items.reduce((b, l) => b + Number(l.qty), 0), 0)
+  const fees = done.reduce((a, s) => a + Number(s.commission) + Number(s.shipping_cost), 0)
+  const returns = list.filter((s) => s.status === 'iade').length
+
+  const months = lastMonths(12)
+  const byMonth = CHANNELS.map((c) => ({
+    id: c.id,
+    label: c.label,
+    color: c.color,
+    values: months.map((m) =>
+      (sales.data ?? []).filter((s) => s.status === 'tamamlandi' && s.channel === c.id && monthKey(s.sale_date) === m).reduce((a, s) => a + saleTotal(s), 0),
+    ),
+  })).filter((s) => s.values.some((v) => v > 0))
+
+  const daily = useMemo(() => {
+    const m = new Map<string, number>()
+    ;(sales.data ?? [])
+      .filter((s) => s.status === 'tamamlandi' && (channel === 'all' || s.channel === channel))
+      .forEach((s) => m.set(s.sale_date, (m.get(s.sale_date) ?? 0) + s.sale_items.reduce((a, l) => a + Number(l.qty), 0)))
+    return m
+  }, [sales.data, channel])
+
+  const remove = async (s: Sale) => {
+    if (!(await confirm('Bu satış silinsin mi?', 'Satıştan düşen stok geri eklenir. Bu işlem düzenleme geçmişine kaydedilir.'))) return
+    try {
+      await write(supabase.from('sales').delete().eq('id', s.id))
+      invalidate(...AFTER.sale)
+      toast('Satış silindi, stok geri eklendi.')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    }
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Satışlar"
+        subtitle="Satış girdiğiniz anda stok düşer: Amazon satışları Amazon FBA'dan, diğerleri depodan."
+        actions={
+          <Button variant="gold" icon={<ShoppingBag className="h-4 w-4" />} onClick={() => setEditing('new')}>
+            Satış ekle
+          </Button>
+        }
+      />
+      <ErrorNote message={sales.error} />
+
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Segmented
+            value={range}
+            onChange={setRange}
+            options={[
+              { id: '30', label: '30 gün' },
+              { id: '90', label: '90 gün' },
+              { id: '365', label: '1 yıl' },
+              { id: 'all', label: 'Tümü' },
+            ]}
+          />
+          <Segmented value={channel} onChange={setChannel} options={[{ id: 'all', label: 'Tüm kanallar' }, ...CHANNELS.map((c) => ({ id: c.id, label: c.label }))]} />
+        </div>
+        <SearchBox value={q} onChange={setQ} placeholder="Sipariş no, müşteri…" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat tone="dark" label="Ciro" value={tl(revenue)} sub={`${done.length} sipariş`} />
+        <Stat label="Satılan" value={num(units)} sub="adet / metre" />
+        <Stat label="Ortalama sipariş" value={tl(done.length ? revenue / done.length : 0)} />
+        <Stat label="Komisyon + kargo" value={tl(fees)} sub={`${returns} iade`} />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+        <Card title="Aylık ciro, kanal kanal" action={<Legend items={byMonth} />}>
+          {sales.loading ? <Skeleton className="h-[260px]" /> : <BarChart labels={months.map((m) => monthLabel(m))} tooltipLabels={months.map((m) => monthLabel(m, true))} series={byMonth} stacked format={(v) => tl(v)} />}
+        </Card>
+        <Card title="Günlük satış adedi">
+          <CalendarHeat days={daily} format={(v) => `${num(v)} adet`} weeks={20} />
+          <p className="mt-3 text-xs text-ink-soft/60">Son 20 hafta. Koyu kareler yoğun günler.</p>
+        </Card>
+      </div>
+
+      <Card className="mt-4" pad={false}>
+        {sales.loading ? (
+          <div className="space-y-2 p-5">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12" />
+            ))}
+          </div>
+        ) : list.length === 0 ? (
+          <div className="p-5">
+            <Empty icon={<ShoppingBag className="h-5 w-5" />} title="Bu aralıkta satış yok" text="Yeni satış girdiğinizde stok otomatik düşer ve finansa gelir olarak yansır." action={<Button onClick={() => setEditing('new')}>Satış ekle</Button>} />
+          </div>
+        ) : (
+          <Table
+            head={
+              <tr>
+                <th>Tarih</th>
+                <th>Kanal</th>
+                <th>Sipariş</th>
+                <th>Ürünler</th>
+                <th className="text-right">Tutar</th>
+                <th className="text-right">Net</th>
+                <th>Durum</th>
+                <th>Giren</th>
+                <th />
+              </tr>
+            }
+          >
+            {list.slice(0, page.n).map((s) => {
+              const total = saleTotal(s)
+              const net = total - Number(s.commission) - Number(s.shipping_cost)
+              const u = byId(s.created_by)
+              return (
+                <tr key={s.id}>
+                  <td className="whitespace-nowrap text-ink-soft">{dateTR(s.sale_date)}</td>
+                  <td>
+                    <Badge color={colorOf(CHANNELS, s.channel)}>{label(CHANNELS, s.channel)}</Badge>
+                  </td>
+                  <td>
+                    <p className="font-semibold text-ink">{s.order_no || '—'}</p>
+                    {s.customer && <p className="text-xs text-ink-soft/60">{s.customer}</p>}
+                  </td>
+                  <td className="max-w-[260px]">
+                    {s.sale_items.map((l, i) => {
+                      const it = items?.find((x) => x.id === l.item_id)
+                      return (
+                        <p key={i} className="truncate text-ink-soft">
+                          <b className="text-ink">{num(l.qty)}×</b> {it?.label ?? '…'}
+                        </p>
+                      )
+                    })}
+                  </td>
+                  <td className="text-right font-bold tabular-nums">{tl(total)}</td>
+                  <td className="text-right tabular-nums text-ink-soft">{tl(net)}</td>
+                  <td>
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusPill tone={s.status === 'tamamlandi' ? 'good' : s.status === 'iade' ? 'warning' : 'neutral'}>{label(SALE_STATUS, s.status)}</StatusPill>
+                      {s.payment_status === 'bekliyor' && <StatusPill tone="info">Tahsilat bekliyor</StatusPill>}
+                    </div>
+                  </td>
+                  <td>
+                    <UserDot name={u?.full_name} color={u?.color} />
+                  </td>
+                  <td className="whitespace-nowrap text-right">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label="Düzenle">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => remove(s)} aria-label="Sil">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
+          </Table>
+        )}
+        <ShowMore shown={Math.min(page.n, list.length)} total={list.length} onMore={page.more} />
+      </Card>
+
+      {editing && items && <SaleForm sale={editing === 'new' ? null : editing} items={items} onClose={() => setEditing(null)} />}
+    </>
+  )
+}
+
+function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNullable<ReturnType<typeof useItemsWithStock>['data']>; onClose: () => void }) {
+  const { toast } = useUi()
+  const [f, setF] = useState({
+    sale_date: sale?.sale_date ?? today(),
+    channel: (sale?.channel ?? 'trendyol') as Channel,
+    order_no: sale?.order_no ?? '',
+    customer: sale?.customer ?? '',
+    status: sale?.status ?? 'tamamlandi',
+    commission: sale ? String(sale.commission) : '',
+    shipping_cost: sale ? String(sale.shipping_cost) : '',
+    payment_status: sale?.payment_status ?? 'odendi',
+    due_date: sale?.due_date ?? '',
+    note: sale?.note ?? '',
+  })
+  const [lines, setLines] = useState<Line[]>(
+    sale?.sale_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: String(l.unit_price), location_id: l.location_id })) ?? [emptyLine()],
+  )
+  const [busy, setBusy] = useState(false)
+  const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
+  const defaultLoc = f.channel === 'amazon' ? 'amazon' : 'depo'
+  const subtotal = lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const net = subtotal - (Number(f.commission) || 0) - (Number(f.shipping_cost) || 0)
+
+  // Düzenlerken, bu satışın kendi düştüğü stok uyarıda tekrar sayılmasın
+  const adjusted = useMemo(() => {
+    if (!sale) return items
+    return items.map((i) => {
+      const back = sale.sale_items.filter((l) => l.item_id === i.id && sale.status !== 'iptal')
+      if (!back.length || sale.status === 'iade') return i
+      const s = { ...i.stock }
+      back.forEach((l) => (s[(l.location_id ?? 'depo') as keyof typeof s] += Number(l.qty)))
+      return { ...i, stock: s }
+    })
+  }, [items, sale])
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (lines.some((l) => !l.item_id || !(Number(l.qty) > 0))) return toast('Her satırda ürün ve miktar olmalı.', 'error')
+    setBusy(true)
+    try {
+      await write(
+        supabase.rpc('save_sale', {
+          p_header: {
+            id: sale?.id ?? null,
+            ...f,
+            commission: Number(f.commission) || 0,
+            shipping_cost: Number(f.shipping_cost) || 0,
+            due_date: f.payment_status === 'bekliyor' && f.due_date ? f.due_date : null,
+            order_no: f.order_no || null,
+            customer: f.customer || null,
+            note: f.note || null,
+          },
+          p_lines: lines.map((l) => ({ item_id: l.item_id, qty: Number(l.qty), unit_price: Number(l.price) || 0, location_id: l.location_id ?? defaultLoc })),
+        }),
+      )
+      invalidate(...AFTER.sale)
+      toast(sale ? 'Satış güncellendi, stok yeniden hesaplandı.' : 'Satış kaydedildi, stok düştü.')
+      onClose()
+    } catch (err: any) {
+      toast(err.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Drawer
+      open
+      wide
+      onClose={onClose}
+      title={sale ? 'Satışı düzenle' : 'Yeni satış'}
+      footer={
+        <>
+          <p className="mr-auto text-sm text-ink-soft">
+            Net <b className="font-display text-lg font-black text-ink">{tl(net)}</b>
+          </p>
+          <Button variant="secondary" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button form="sale-form" type="submit" loading={busy}>
+            {sale ? 'Güncelle' : 'Kaydet'}
+          </Button>
+        </>
+      }
+    >
+      <form id="sale-form" onSubmit={save} className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Kanal">
+            <Select
+              value={f.channel}
+              onChange={(e) => {
+                const ch = e.target.value as Channel
+                set({ channel: ch })
+                setLines(lines.map((l) => ({ ...l, location_id: ch === 'amazon' ? 'amazon' : l.location_id === 'amazon' ? 'depo' : l.location_id })))
+              }}
+            >
+              {CHANNELS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Tarih">
+            <Input type="date" required value={f.sale_date} onChange={(e) => set({ sale_date: e.target.value })} />
+          </Field>
+          <Field label="Durum">
+            <Select value={f.status} onChange={(e) => set({ status: e.target.value as any })}>
+              {SALE_STATUS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Sipariş no">
+            <Input value={f.order_no} onChange={(e) => set({ order_no: e.target.value })} placeholder="İsteğe bağlı" />
+          </Field>
+          <Field label="Müşteri" className="sm:col-span-2">
+            <Input value={f.customer} onChange={(e) => set({ customer: e.target.value })} placeholder="Toptan satışlarda firma adı" />
+          </Field>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-bold text-ink">Ürünler</p>
+          <LinesEditor items={adjusted} lines={lines} setLines={setLines} priceFrom="price" priceLabel="Satış fiyatı" stockFrom={(l) => l.location_id ?? defaultLoc} showLocation />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Pazaryeri komisyonu (₺)" hint="Ciro ve net kâr ayrı izlensin diye masraf olarak düşülür.">
+            <Input type="number" min="0" step="any" value={f.commission} onChange={(e) => set({ commission: e.target.value })} placeholder="0" />
+          </Field>
+          <Field label="Kargo masrafı (₺)">
+            <Input type="number" min="0" step="any" value={f.shipping_cost} onChange={(e) => set({ shipping_cost: e.target.value })} placeholder="0" />
+          </Field>
+          <Field label="Tahsilat">
+            <Select value={f.payment_status} onChange={(e) => set({ payment_status: e.target.value as any })}>
+              {PAYMENT_STATUS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.id === 'odendi' ? 'Tahsil edildi' : 'Tahsilat bekliyor'}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {f.payment_status === 'bekliyor' && (
+            <Field label="Vade tarihi">
+              <Input type="date" value={f.due_date} onChange={(e) => set({ due_date: e.target.value })} />
+            </Field>
+          )}
+        </div>
+        <Field label="Not">
+          <Textarea value={f.note} onChange={(e) => set({ note: e.target.value })} />
+        </Field>
+      </form>
+    </Drawer>
+  )
+}

@@ -1,0 +1,336 @@
+'use client'
+
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { AnimatePresence, motion } from 'framer-motion'
+import {
+  Boxes,
+  ExternalLink,
+  Globe,
+  History,
+  KeyRound,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  Megaphone,
+  Menu,
+  PackagePlus,
+  Plus,
+  ShoppingBag,
+  Store,
+  Truck,
+  Wallet,
+  X,
+} from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/panel/auth'
+import { invalidate } from '@/lib/panel/data'
+import { Button, cx, Drawer, Field, Input, useUi } from './ui'
+
+const NAV: { group: string; items: { href: string; label: string; icon: typeof Boxes }[] }[] = [
+  { group: '', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard }] },
+  {
+    group: 'Ticaret',
+    items: [
+      { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
+      { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
+      { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+      { href: '/admin/stok', label: 'Stok', icon: Boxes },
+    ],
+  },
+  {
+    group: 'Para',
+    items: [
+      { href: '/admin/finans', label: 'Finans', icon: Wallet },
+      { href: '/admin/reklam', label: 'Reklam', icon: Megaphone },
+    ],
+  },
+  {
+    group: 'Ekip',
+    items: [
+      { href: '/admin/isler', label: 'İşler', icon: ListChecks },
+      { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe },
+      { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History },
+    ],
+  },
+  { group: 'Site', items: [{ href: '/admin/vitrin', label: 'Vitrin', icon: Store }] },
+]
+
+const QUICK = [
+  { href: '/admin/satislar?yeni=1', label: 'Satış', icon: ShoppingBag },
+  { href: '/admin/alimlar?yeni=1', label: 'Mal alımı', icon: PackagePlus },
+  { href: '/admin/sevkiyat?yeni=1', label: 'Amazon sevkiyatı', icon: Truck },
+  { href: '/admin/finans?yeni=1', label: 'Gelir / gider', icon: Wallet },
+  { href: '/admin/reklam?yeni=1', label: 'Reklam harcaması', icon: Megaphone },
+  { href: '/admin/isler?yeni=1', label: 'İş', icon: ListChecks },
+]
+
+function Mark() {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 leading-none text-white">
+      <span className="font-display text-[22px] font-black tracking-[-0.04em]">OMY</span>
+      <span aria-hidden className="h-[7px] w-[7px] rounded-full bg-thread" />
+      <span className="text-[13px] font-semibold tracking-wide text-white/60">Panel</span>
+    </span>
+  )
+}
+
+function NavList({ onNavigate }: { onNavigate?: () => void }) {
+  const path = usePathname()
+  const isActive = (href: string) => (href === '/admin' ? path === '/admin' : path?.startsWith(href))
+  return (
+    <nav className="space-y-5">
+      {NAV.map((g) => (
+        <div key={g.group || 'root'}>
+          {g.group && <p className="mb-1.5 px-3 text-[11px] font-bold text-white/35">{g.group}</p>}
+          <ul className="space-y-0.5">
+            {g.items.map((it) => {
+              const active = isActive(it.href)
+              return (
+                <li key={it.href}>
+                  <Link
+                    href={it.href}
+                    onClick={onNavigate}
+                    className={cx(
+                      'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors',
+                      active ? 'text-white' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
+                    )}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="nav-active"
+                        className="absolute inset-0 rounded-xl bg-white/[0.08] ring-1 ring-inset ring-white/10"
+                        transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                      />
+                    )}
+                    {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
+                    <it.icon className={cx('relative h-[18px] w-[18px]', active ? 'text-thread' : '')} />
+                    <span className="relative">{it.label}</span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  )
+}
+
+function AccountDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { me } = useAuth()
+  const { toast } = useUi()
+  const [name, setName] = useState(me.full_name)
+  const [color, setColor] = useState(me.color)
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    if (pw && pw.length < 8) return toast('Yeni şifre en az 8 karakter olmalı.', 'error')
+    if (pw && pw !== pw2) return toast('Şifreler aynı değil.', 'error')
+    setBusy(true)
+    try {
+      const { error } = await supabase.from('profiles').update({ full_name: name.trim() || me.full_name, color }).eq('id', me.id)
+      if (error) throw error
+      if (pw) {
+        const { error: e2 } = await supabase.auth.updateUser({ password: pw })
+        if (e2) throw e2
+      }
+      toast(pw ? 'Bilgiler ve şifre güncellendi.' : 'Bilgiler güncellendi.')
+      setPw('')
+      setPw2('')
+      onClose()
+      setTimeout(() => location.reload(), 600)
+    } catch (e: any) {
+      toast(e.message ?? 'Kaydedilemedi', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Hesabım"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Vazgeç
+          </Button>
+          <Button onClick={save} loading={busy}>
+            Kaydet
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="rounded-xl bg-white p-4 text-sm text-ink-soft ring-1 ring-line">
+          Kullanıcı adı: <b className="text-ink">{me.username}</b>
+        </p>
+        <Field label="Görünen ad">
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Renk" hint="İşlerde ve geçmişte adınızın yanında görünür.">
+          <div className="flex gap-2">
+            {['#E3AB3B', '#4EA1E1', '#B85C4E', '#1baf7a', '#e87ba4', '#9085e9'].map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={cx('h-9 w-9 rounded-full ring-offset-2 transition', color === c && 'ring-2 ring-ink')}
+                style={{ backgroundColor: c }}
+                aria-label={`Renk ${c}`}
+              />
+            ))}
+          </div>
+        </Field>
+        <div className="border-t border-line pt-4">
+          <p className="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
+            <KeyRound className="h-4 w-4" /> Şifre değiştir
+          </p>
+          <div className="space-y-3">
+            <Field label="Yeni şifre">
+              <Input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="En az 8 karakter" />
+            </Field>
+            <Field label="Yeni şifre (tekrar)">
+              <Input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+            </Field>
+          </div>
+        </div>
+      </div>
+    </Drawer>
+  )
+}
+
+function QuickAdd() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <Button variant="gold" icon={<Plus className="h-4 w-4" />} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="hidden sm:inline">Yeni kayıt</span>
+      </Button>
+      <AnimatePresence>
+        {open && (
+          <motion.ul
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl bg-white p-1.5 shadow-2xl ring-1 ring-black/10"
+          >
+            {QUICK.map((q) => (
+              <li key={q.href}>
+                <Link href={q.href} onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-ink hover:bg-[#F4F3EF]">
+                  <q.icon className="h-4 w-4 text-ink-soft/60" />
+                  {q.label}
+                </Link>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+export default function Shell({ children }: { children: ReactNode }) {
+  const { me, signOut } = useAuth()
+  const [mobile, setMobile] = useState(false)
+  const [account, setAccount] = useState(false)
+  const path = usePathname()
+  useEffect(() => setMobile(false), [path])
+
+  const userCard = (
+    <div className="rounded-2xl bg-white/[0.04] p-3 ring-1 ring-white/[0.06]">
+      <button onClick={() => setAccount(true)} className="flex w-full items-center gap-3 rounded-xl text-left">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black text-night" style={{ backgroundColor: me.color }}>
+          {me.full_name.slice(0, 1)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-bold text-white">{me.full_name}</span>
+          <span className="block text-xs text-white/45">Hesabım</span>
+        </span>
+      </button>
+      <div className="mt-3 flex gap-1.5">
+        <a href="/" target="_blank" className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-xs font-semibold text-white/70 hover:text-white">
+          <ExternalLink className="h-3.5 w-3.5" /> Site
+        </a>
+        <button onClick={signOut} className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-xs font-semibold text-white/70 hover:text-white">
+          <LogOut className="h-3.5 w-3.5" /> Çıkış
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-[#F4F3EF] font-sans text-ink">
+      {/* Masaüstü yan menü */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-hidden bg-night px-4 pb-4 pt-6 lg:flex">
+        <div aria-hidden className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-thread/15 blur-[80px]" />
+        <Link href="/admin" className="relative mb-8 px-3">
+          <Mark />
+        </Link>
+        <div className="relative flex-1 overflow-y-auto pr-1">
+          <NavList />
+        </div>
+        <div className="relative mt-4">{userCard}</div>
+      </aside>
+
+      {/* Mobil */}
+      <AnimatePresence>
+        {mobile && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobile(false)} className="absolute inset-0 bg-night/50" />
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 420, damping: 42 }}
+              className="absolute inset-y-0 left-0 flex w-72 flex-col bg-night px-4 pb-4 pt-5"
+            >
+              <div className="mb-6 flex items-center justify-between px-3">
+                <Mark />
+                <button onClick={() => setMobile(false)} className="text-white/70" aria-label="Menüyü kapat">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <NavList onNavigate={() => setMobile(false)} />
+              </div>
+              <div className="mt-4">{userCard}</div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-black/[0.06] bg-[#F4F3EF]/85 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobile(true)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-line lg:hidden" aria-label="Menüyü aç">
+              <Menu className="h-5 w-5" />
+            </button>
+            <p className="hidden text-sm text-ink-soft/70 sm:block">
+              Merhaba <b className="text-ink">{me.full_name}</b>, {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => invalidate()} title="Verileri yenile">
+              Yenile
+            </Button>
+            <QuickAdd />
+          </div>
+        </header>
+        <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+      </div>
+      <AccountDrawer open={account} onClose={() => setAccount(false)} />
+    </div>
+  )
+}
