@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { Boxes, ClipboardCheck, Pencil, Plus, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
-import { BRANDS, colorOf, label, LOCATIONS, MOVEMENT_KINDS, UNITS, type Brand, type LocationId } from '@/lib/panel/constants'
+import { BRANDS, colorOf, label, LOCATIONS, MOVEMENT_KINDS, productImage, UNITS, type Brand, type LocationId } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type ItemWithStock } from '@/lib/panel/data'
 import { dateTR, norm, num, pct, tl, today } from '@/lib/panel/format'
 import { coverDays, velocities } from '@/lib/panel/insights'
@@ -146,7 +146,15 @@ export default function StockPage() {
                   <tr key={i.id} className={cx(!i.active && 'opacity-50')}>
                     <td>
                       <div className="flex items-center gap-2.5">
-                        <span className="h-8 w-1 rounded-full" style={{ backgroundColor: colorOf(BRANDS, i.brand) }} />
+                        {productImage(i.sku) ? (
+                          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F4F3EF]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={productImage(i.sku)!} alt="" className="h-8 w-8 object-contain" loading="lazy" />
+                            <span className="absolute -left-1 top-2 h-6 w-1 rounded-full" style={{ backgroundColor: colorOf(BRANDS, i.brand) }} />
+                          </span>
+                        ) : (
+                          <span className="h-8 w-1 rounded-full" style={{ backgroundColor: colorOf(BRANDS, i.brand) }} />
+                        )}
                         <div>
                           <p className="font-semibold text-ink">{i.label}</p>
                           <p className="text-xs text-ink-soft/50">

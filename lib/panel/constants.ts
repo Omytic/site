@@ -153,3 +153,17 @@ export const label = <T extends { id: string; label: string }>(list: readonly T[
   list.find((x) => x.id === id)?.label ?? id ?? '—'
 export const colorOf = <T extends { id: string; color: string }>(list: readonly T[], id: string | null | undefined) =>
   list.find((x) => x.id === id)?.color ?? '#8a8f99'
+
+// Ürün fotoğrafı SKU'dan bulunur: yeni beden eklense de aynı modelin fotoğrafı kullanılır.
+const PRODUCT_IMAGES: [RegExp, string][] = [
+  [/^FS-M100-/i, 'fs-m100'],
+  [/^FS-M300-/i, 'fs-m300'],
+  [/^FS-M900-/i, 'fs-m900'],
+  [/^SR-18G-L$/i, 'sr-18g-lansman'],
+  [/^SR-18G$/i, 'sr-18g'],
+  [/^SR-10G$/i, 'sr-10g'],
+]
+export const productImage = (sku: string | null | undefined) => {
+  const hit = sku ? PRODUCT_IMAGES.find(([re]) => re.test(sku)) : undefined
+  return hit ? `/panel/products/${hit[1]}.webp` : null
+}

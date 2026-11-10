@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { Pencil, ShoppingBag, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
-import { CHANNELS, colorOf, label, PAYMENT_STATUS, SALE_STATUS, type Channel } from '@/lib/panel/constants'
+import { CHANNELS, colorOf, label, PAYMENT_STATUS, productImage, SALE_STATUS, type Channel } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
 import { addDays, dateTimeTR, dateTR, relTime, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
@@ -165,8 +165,14 @@ export default function SalesPage() {
                     {s.sale_items.map((l, i) => {
                       const it = items?.find((x) => x.id === l.item_id)
                       return (
-                        <p key={i} className="truncate text-ink-soft">
-                          <b className="text-ink">{num(l.qty)}×</b> {it?.label ?? '…'}
+                        <p key={i} className="flex items-center gap-1.5 truncate text-ink-soft">
+                          {productImage(it?.sku) && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={productImage(it?.sku)!} alt="" className="h-5 w-5 shrink-0 object-contain" loading="lazy" />
+                          )}
+                          <span className="truncate">
+                            <b className="text-ink">{num(l.qty)}×</b> {it?.label ?? '…'}
+                          </span>
                         </p>
                       )
                     })}
