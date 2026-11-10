@@ -25,7 +25,7 @@ async function run(req: Request) {
     const r = await syncTrendyol(db, { days })
     await db
       .from('sync_runs')
-      .update({ status: 'tamam', finished_at: new Date().toISOString(), range_from: r.from, range_to: r.to, fetched: r.fetched, imported: r.imported, updated: r.updated, skipped: r.skipped, message: r.unmatched.length ? `${r.unmatched.length} ürün kodu eşleşmedi` : null })
+      .update({ status: 'tamam', finished_at: new Date().toISOString(), range_from: r.from, range_to: r.to, fetched: r.fetched, imported: r.imported, updated: r.updated, skipped: r.skipped, message: [r.linked ? `${r.linked} sipariş elle girilmiş kayda bağlandı` : '', r.unmatched.length ? `${r.unmatched.length} ürün kodu eşleşmedi` : ''].filter(Boolean).join(' · ') || null })
       .eq('id', run?.id)
     return NextResponse.json({ ok: true, ...r })
   } catch (e: any) {

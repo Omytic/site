@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { CHANNELS, colorOf, label, PAYMENT_STATUS, SALE_STATUS, type Channel } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
-import { addDays, dateTR, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
+import { addDays, dateTimeTR, dateTR, relTime, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
 import { emptyLine, LinesEditor, useOpenFromQuery, type Line } from '@/components/panel/forms'
 import { Badge, Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
@@ -62,7 +62,8 @@ export default function SalesPage() {
   }, [sales.data, channel])
 
   const remove = async (s: Sale) => {
-    if (!(await confirm('Bu satış silinsin mi?', 'Satıştan düşen stok geri eklenir. Bu işlem düzenleme geçmişine kaydedilir.'))) return
+    const auto = s.external_ref ? ` Bu sipariş ${label(CHANNELS, s.channel)}'dan otomatik geldi; silerseniz bir daha içe aktarılmaz.` : ''
+    if (!(await confirm('Bu satış silinsin mi?', `Satıştan düşen stok geri eklenir. Bu işlem düzenleme geçmişine kaydedilir.${auto}`))) return
     try {
       await write(supabase.from('sales').delete().eq('id', s.id))
       invalidate(...AFTER.sale)
@@ -178,8 +179,24 @@ export default function SalesPage() {
                       {s.payment_status === 'bekliyor' && <StatusPill tone="info">Tahsilat bekliyor</StatusPill>}
                     </div>
                   </td>
-                  <td>
-                    <UserDot name={u?.full_name} color={u?.color} />
+                  <td className="whitespace-nowrap">
+                    {u ? (
+                      <UserDot name={u.full_name} color={u.color} />
+                    ) : s.external_ref ? (
+                      <span className="text-sm text-ink-soft">Otomatik · {label(CHANNELS, s.channel)}</span>
+                    ) : (
+                      <UserDot />
+                    )}
+                    {(() => {
+                      const edited = s.updated_at && new Date(s.updated_at).getTime() - new Date(s.created_at).getTime() > 2000
+                      if (!edited) return null
+                      const e = byId(s.updated_by)
+                      return (
+                        <p className="mt-0.5 text-xs text-ink-soft/60" title={dateTimeTR(s.updated_at!)}>
+                          son: {e?.full_name ?? 'otomatik'}, {relTime(s.updated_at!)}
+                        </p>
+                      )
+                    })()}
                   </td>
                   <td className="whitespace-nowrap text-right">
                     <Button variant="ghost" size="sm" onClick={() => setEditing(s)} aria-label="Düzenle">

@@ -19,6 +19,7 @@ export interface Sale {
   status: 'tamamlandi' | 'iade' | 'iptal'; commission: number; shipping_cost: number
   payment_status: 'odendi' | 'bekliyor'; due_date: string | null; note: string | null
   created_at: string; created_by: string | null; sale_items: SaleItem[]
+  external_ref?: string | null; updated_at?: string; updated_by?: string | null
 }
 export interface PurchaseItem { id?: string; item_id: string; qty: number; unit_cost: number; location_id?: LocationId }
 export interface Purchase {

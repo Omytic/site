@@ -13,9 +13,9 @@ begin
     raise exception 'Önce :SIFRE yerine şifreyi yazın';
   end if;
   for u in
-    select * from (values ('yunus', 'Yunus', '#E3AB3B'), ('yusuf', 'Yusuf', '#4EA1E1'), ('omer', 'Ömer', '#B85C4E')) as v(username, full_name, color)
+    select * from (values ('yunus', 'yunus', 'Yunus', '#E3AB3B'), ('yusuf', 'yusuf', 'Yusuf', '#4EA1E1'), ('omer', 'ömer', 'Ömer', '#B85C4E')) as v(login, username, full_name, color)
   loop
-    select id into uid from auth.users where email = u.username || '@omytic.com';
+    select id into uid from auth.users where email = u.login || '@omytic.com';
     if uid is null then
       uid := gen_random_uuid();
       insert into auth.users (
@@ -24,14 +24,14 @@ begin
         confirmation_token, email_change, email_change_token_new, recovery_token
       ) values (
         '00000000-0000-0000-0000-000000000000', uid, 'authenticated', 'authenticated',
-        u.username || '@omytic.com', extensions.crypt(v_password, extensions.gen_salt('bf')), now(),
+        u.login || '@omytic.com', extensions.crypt(v_password, extensions.gen_salt('bf')), now(),
         '{"provider":"email","providers":["email"]}'::jsonb, jsonb_build_object('full_name', u.full_name), now(), now(),
         '', '', '', ''
       );
       insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
       values (
         gen_random_uuid(), uid, uid::text,
-        jsonb_build_object('sub', uid::text, 'email', u.username || '@omytic.com', 'email_verified', true),
+        jsonb_build_object('sub', uid::text, 'email', u.login || '@omytic.com', 'email_verified', true),
         'email', now(), now(), now()
       );
     end if;

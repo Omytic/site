@@ -5,6 +5,7 @@ import type { AuditRow, Item, Profile } from '@/lib/panel/data'
 import { dateTR, num, tl } from '@/lib/panel/format'
 
 const FIELD: Record<string, string> = {
+  external_ref: 'Pazaryeri paketi',
   name: 'Ad',
   title: 'Başlık',
   description: 'Açıklama',
@@ -63,7 +64,7 @@ const FIELD: Record<string, string> = {
   kind: 'Tür',
   item_id: 'Ürün',
 }
-const HIDDEN = new Set(['id', 'created_at', 'updated_at', 'created_by', 'completed_at', 'sale_id', 'purchase_id', 'shipment_id', 'asset_id', 'features', 'site_title', 'site_description'])
+const HIDDEN = new Set(['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'external_status', 'completed_at', 'sale_id', 'purchase_id', 'shipment_id', 'asset_id', 'features', 'site_title', 'site_description'])
 const MONEY = new Set(['cost', 'price', 'commission', 'shipping_cost', 'amount', 'budget', 'unit_price', 'unit_cost'])
 
 export function fmtValue(key: string, v: any, ctx: { items: Item[]; profiles: Profile[] }) {

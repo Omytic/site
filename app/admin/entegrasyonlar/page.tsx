@@ -8,6 +8,15 @@ import { dateTimeTR, num, relTime } from '@/lib/panel/format'
 import { ItemSelect } from '@/components/panel/forms'
 import { Button, Card, cx, Empty, ErrorNote, PageHeader, Skeleton, StatusPill, Table, useUi } from '@/components/panel/ui'
 
+const RULES: [string, string][] = [
+  ['Aynı sipariş iki kez sayılmaz.', 'Senkron her paketi Trendyol paket numarasıyla işaretler; tekrar çalıştığında aynı paketi yeniden eklemez.'],
+  ['Elle girdiğiniz siparişe dokunmaz.', 'Bir Trendyol siparişini panelden kendiniz girdiyseniz, senkron aynı sipariş numarasını görünce yeni satış açmaz, sizin kaydınıza bağlanır.'],
+  ['Otomatik gelen siparişi elle tekrar giremezsiniz.', 'Aynı kanal ve sipariş numarasıyla ikinci kayıt engellenir; kimin, hangi tarihte girdiği uyarıda yazar.'],
+  ['Düzenlemeleriniz ezilmez.', 'Otomatik gelen satışı düzenleyebilirsiniz. Senkron yalnızca Trendyol tarafında durum değişirse (iptal, iade) durumu günceller.'],
+  ['Sildiğiniz geri gelmez.', 'Otomatik gelen bir satışı silerseniz stok geri eklenir ve o paket bir daha içe aktarılmaz.'],
+  ['Kim ne yaptı görünür.', 'Satışlarda "Giren" sütunu kişiyi ya da "Otomatik · Trendyol"u, son düzenleyeni de altında gösterir. Her değişiklik Düzenleme geçmişi’nde.'],
+]
+
 interface SyncRun {
   id: number
   channel: string
@@ -38,7 +47,7 @@ interface Listing {
 const CHANNELS = [
   { id: 'trendyol', name: 'Trendyol', ready: true, how: 'Satıcı paneli → Hesap Bilgilerim → Entegrasyon Bilgileri', env: ['TRENDYOL_SELLER_ID', 'TRENDYOL_API_KEY', 'TRENDYOL_API_SECRET'] },
   { id: 'hepsiburada', name: 'Hepsiburada', ready: false, how: 'Merchant paneli → Entegrasyon bilgileri', env: ['HEPSIBURADA_MERCHANT_ID', 'HEPSIBURADA_USERNAME', 'HEPSIBURADA_PASSWORD'] },
-  { id: 'amazon', name: 'Amazon', ready: false, how: 'Seller Central → Uygulama Geliştir (SP-API, private developer)', env: ['AMAZON_SP_CLIENT_ID', 'AMAZON_SP_CLIENT_SECRET', 'AMAZON_SP_REFRESH_TOKEN'] },
+  { id: 'amazon', name: 'Amazon', ready: false, how: 'solutionproviderportal.amazon.com → private developer kaydı → uygulama (SP-API)', env: ['AMAZON_SP_CLIENT_ID', 'AMAZON_SP_CLIENT_SECRET', 'AMAZON_SP_REFRESH_TOKEN'] },
 ] as const
 
 async function token() {
@@ -88,7 +97,7 @@ export default function IntegrationsPage() {
       const res = await fetch(`/api/sync/${channel}${days ? `?days=${days}` : ''}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
       const body = await res.json()
       if (!body.ok) throw new Error(body.message)
-      toast(`${body.fetched} paket okundu: ${body.imported} yeni satış, ${body.updated} güncelleme${body.unmatched?.length ? `, ${body.unmatched.length} eşleşmeyen ürün` : ''}.`)
+      toast(`${body.fetched} paket okundu: ${body.imported} yeni satış, ${body.updated} durum güncellemesi${body.linked ? `, ${body.linked} elle girilmiş satışa bağlandı` : ''}${body.unmatched?.length ? `, ${body.unmatched.length} eşleşmeyen ürün` : ''}.`)
       invalidate('sync_runs', 'sync_unmatched', ...AFTER.sale)
     } catch (e: any) {
       toast(e.message, 'error')
@@ -196,6 +205,19 @@ export default function IntegrationsPage() {
           ▲ Sunucuda <code>SUPABASE_SERVICE_ROLE_KEY</code> tanımlı değil. Senkron satış yazabilmek için buna ihtiyaç duyar (Supabase → Project Settings → API → service_role).
         </p>
       )}
+
+      <Card className="mt-4" title="Otomatik senkron ile elle giriş nasıl birlikte çalışır?">
+        <ul className="grid gap-x-8 gap-y-3 text-sm text-ink-soft md:grid-cols-2">
+          {RULES.map(([title, text]) => (
+            <li key={title} className="flex gap-2.5">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1baf7a]" />
+              <span>
+                <b className="text-ink">{title}</b> {text}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
 
       <Card className="mt-4" title="Eşleşmeyen ürünler" action={<span className="text-xs text-ink-soft/60">Barkodu panel ürününe bağlayın</span>}>
         {unmatched.loading ? (

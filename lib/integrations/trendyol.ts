@@ -78,6 +78,7 @@ export interface SyncResult {
   fetched: number
   imported: number
   updated: number
+  linked: number
   skipped: number
   unmatched: string[]
   from: string
@@ -116,25 +117,60 @@ export async function syncTrendyol(db: SupabaseClient, opts: { days?: number } =
   ;(listings ?? []).forEach((l) => map.set(l.external_code.trim().toLowerCase(), l.item_id))
   const resolve = (l: TyLine) => (l.barcode && map.get(l.barcode.trim().toLowerCase())) || (l.stockCode && map.get(l.stockCode.trim().toLowerCase())) || null
 
+  // Daha önce içe aktarılmış paketler, panelde elle girilmiş aynı siparişler ve panelden silinmiş paketler
   const refs = Array.from(packages.keys())
-  const existing = new Map<string, { id: string; status: string; sale_date: string }>()
+  const orderNos = Array.from(new Set(Array.from(packages.values()).map((p) => String(p.orderNumber))))
+  const existing = new Map<string, { id: string; status: string; external_status: string | null }>()
+  const manual = new Map<string, { id: string; external_ref: string | null }>()
+  const ignored = new Set<string>()
   for (let i = 0; i < refs.length; i += 200) {
-    const { data } = await db.from('sales').select('id,status,sale_date,external_ref').eq('channel', 'trendyol').in('external_ref', refs.slice(i, i + 200))
-    ;(data ?? []).forEach((s) => existing.set(s.external_ref as string, s))
+    const chunk = refs.slice(i, i + 200)
+    const [{ data: a, error: e1 }, { data: b, error: e2 }] = await Promise.all([
+      db.from('sales').select('id,status,external_status,external_ref').eq('channel', 'trendyol').in('external_ref', chunk),
+      db.from('sync_ignored').select('external_ref').eq('channel', 'trendyol').in('external_ref', chunk),
+    ])
+    if (e1 || e2) throw new Error((e1 ?? e2)!.message)
+    ;(a ?? []).forEach((s) => existing.set(s.external_ref as string, s))
+    ;(b ?? []).forEach((r) => ignored.add(r.external_ref as string))
+  }
+  for (let i = 0; i < orderNos.length; i += 200) {
+    // created_by dolu = bir panel kullanıcısı elle girmiş
+    const { data, error } = await db.from('sales').select('id,order_no,external_ref').eq('channel', 'trendyol').not('created_by', 'is', null).in('order_no', orderNos.slice(i, i + 200))
+    if (error) throw new Error(error.message)
+    ;(data ?? []).forEach((s) => manual.set(String(s.order_no).trim(), s))
   }
 
-  const result: SyncResult = { fetched: packages.size, imported: 0, updated: 0, skipped: 0, unmatched: [], from: new Date(from).toISOString(), to: new Date(now).toISOString() }
+  const result: SyncResult = { fetched: packages.size, imported: 0, updated: 0, linked: 0, skipped: 0, unmatched: [], from: new Date(from).toISOString(), to: new Date(now).toISOString() }
   const unmatched = new Map<string, { title: string; order: string }>()
 
   for (const [ref, p] of Array.from(packages.entries())) {
     const status = statusOf(p)
     const saleDate = istanbulDate(p.orderDate)
+    if (ignored.has(ref)) {
+      result.skipped++
+      continue
+    }
     const prev = existing.get(ref)
     if (prev) {
-      if (prev.status !== status) {
-        const { error } = await db.from('sales').update({ status }).eq('id', prev.id)
+      // Durum sadece Trendyol tarafında değiştiyse güncellenir; panelde elle yapılan değişiklik ezilmez.
+      if (prev.external_status !== status) {
+        const patch = prev.external_status === null ? { external_status: status } : { status, external_status: status }
+        const { error } = await db.from('sales').update(patch).eq('id', prev.id)
         if (error) throw new Error(error.message)
-        result.updated++
+        if ('status' in patch && prev.status !== status) result.updated++
+      }
+      continue
+    }
+    const hand = manual.get(String(p.orderNumber).trim())
+    if (hand) {
+      // Aynı sipariş panelde elle girilmiş: ikinci kez eklenmez, elle girilen kayıt bu pakete bağlanır.
+      if (!hand.external_ref) {
+        const { error } = await db.from('sales').update({ external_ref: ref, external_status: status }).eq('id', hand.id)
+        if (error) throw new Error(error.message)
+        hand.external_ref = ref
+        result.linked++
+      } else {
+        result.skipped++
       }
       continue
     }
@@ -152,7 +188,7 @@ export async function syncTrendyol(db: SupabaseClient, opts: { days?: number } =
     const commission = lines.reduce((a, { l }) => a + ((l.lineUnitPrice ?? 0) * l.quantity * (l.commission ?? 0)) / 100, 0)
     const { data: sale, error } = await db
       .from('sales')
-      .insert({ channel: 'trendyol', sale_date: saleDate, order_no: p.orderNumber, external_ref: ref, status, commission: Math.round(commission * 100) / 100, note: 'Trendyol senkronu' })
+      .insert({ channel: 'trendyol', sale_date: saleDate, order_no: String(p.orderNumber), external_ref: ref, external_status: status, status, commission: Math.round(commission * 100) / 100, note: 'Trendyol senkronu' })
       .select('id')
       .single()
     if (error) {

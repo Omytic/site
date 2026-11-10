@@ -99,7 +99,7 @@ export default function HistoryPage() {
                             </span>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-ink">
-                                <b style={{ color: u ? undefined : '#7A8090' }}>{u?.full_name ?? 'Sistem'}</b> {(TABLE_LABELS[r.table_name] ?? r.table_name).toLocaleLowerCase('tr-TR')} {VERB[r.action]}:{' '}
+                                <b style={{ color: u ? undefined : '#7A8090' }}>{u?.full_name ?? (['sales', 'sale_items'].includes(r.table_name) ? 'Otomatik senkron' : 'Sistem')}</b> {(TABLE_LABELS[r.table_name] ?? r.table_name).toLocaleLowerCase('tr-TR')} {VERB[r.action]}:{' '}
                                 <span className="font-semibold">{summarize(r, ctx)}</span>
                               </p>
                               {diff.length > 0 && (
