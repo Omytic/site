@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { adminClient, authorize } from '@/lib/integrations/server'
 import { trendyolConfigured } from '@/lib/integrations/trendyol'
+import { amazonConfigured } from '@/lib/integrations/amazon'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
     serviceRole: true,
     trendyol: trendyolConfigured(),
     hepsiburada: !!(process.env.HEPSIBURADA_MERCHANT_ID && process.env.HEPSIBURADA_USERNAME && process.env.HEPSIBURADA_PASSWORD),
-    amazon: !!(process.env.AMAZON_SP_CLIENT_ID && process.env.AMAZON_SP_CLIENT_SECRET && process.env.AMAZON_SP_REFRESH_TOKEN),
+    amazon: amazonConfigured(),
     cron: !!process.env.CRON_SECRET,
   })
 }

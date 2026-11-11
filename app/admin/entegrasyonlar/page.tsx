@@ -9,12 +9,13 @@ import { ItemSelect } from '@/components/panel/forms'
 import { Button, Card, cx, Empty, ErrorNote, PageHeader, Skeleton, StatusPill, Table, useUi } from '@/components/panel/ui'
 
 const RULES: [string, string][] = [
-  ['Aynı sipariş iki kez sayılmaz.', 'Senkron her paketi Trendyol paket numarasıyla işaretler; tekrar çalıştığında aynı paketi yeniden eklemez.'],
-  ['Elle girdiğiniz siparişe dokunmaz.', 'Bir Trendyol siparişini panelden kendiniz girdiyseniz, senkron aynı sipariş numarasını görünce yeni satış açmaz, sizin kaydınıza bağlanır.'],
+  ['Aynı sipariş iki kez sayılmaz.', 'Senkron her siparişi pazaryerinin sipariş/paket numarasıyla işaretler; tekrar çalıştığında aynısını yeniden eklemez.'],
+  ['Elle girdiğiniz siparişe dokunmaz.', 'Bir pazaryeri siparişini panelden kendiniz girdiyseniz, senkron aynı sipariş numarasını görünce yeni satış açmaz, sizin kaydınıza bağlanır.'],
   ['Otomatik gelen siparişi elle tekrar giremezsiniz.', 'Aynı kanal ve sipariş numarasıyla ikinci kayıt engellenir; kimin, hangi tarihte girdiği uyarıda yazar.'],
-  ['Düzenlemeleriniz ezilmez.', 'Otomatik gelen satışı düzenleyebilirsiniz. Senkron yalnızca Trendyol tarafında durum değişirse (iptal, iade) durumu günceller.'],
+  ['Düzenlemeleriniz ezilmez.', 'Otomatik gelen satışı düzenleyebilirsiniz. Senkron yalnızca pazaryerinde durum değişirse (iptal, iade) durumu günceller.'],
   ['Sildiğiniz geri gelmez.', 'Otomatik gelen bir satışı silerseniz stok geri eklenir ve o paket bir daha içe aktarılmaz.'],
-  ['Kim ne yaptı görünür.', 'Satışlarda "Giren" sütunu kişiyi ya da "Otomatik · Trendyol"u, son düzenleyeni de altında gösterir. Her değişiklik Düzenleme geçmişi’nde.'],
+  ['Amazon’a özel:', 'FBA siparişleri Amazon FBA stoğundan, kendi kargonuzla gönderdikleriniz depodan düşer. Amazon komisyonu ve iadeler bu bağlantıyla gelmez; gerekirse elle girin.'],
+  ['Kim ne yaptı görünür.', 'Satışlarda "Giren" sütunu kişiyi ya da "Otomatik · Amazon / Trendyol"u, son düzenleyeni de altında gösterir. Her değişiklik Düzenleme geçmişi’nde.'],
 ]
 
 interface SyncRun {
@@ -47,7 +48,7 @@ interface Listing {
 const CHANNELS = [
   { id: 'trendyol', name: 'Trendyol', ready: true, how: 'Satıcı paneli → Hesap Bilgilerim → Entegrasyon Bilgileri', env: ['TRENDYOL_SELLER_ID', 'TRENDYOL_API_KEY', 'TRENDYOL_API_SECRET'] },
   { id: 'hepsiburada', name: 'Hepsiburada', ready: false, how: 'Merchant paneli → Entegrasyon bilgileri', env: ['HEPSIBURADA_MERCHANT_ID', 'HEPSIBURADA_USERNAME', 'HEPSIBURADA_PASSWORD'] },
-  { id: 'amazon', name: 'Amazon', ready: false, how: 'solutionproviderportal.amazon.com → private developer kaydı → uygulama (SP-API)', env: ['AMAZON_SP_CLIENT_ID', 'AMAZON_SP_CLIENT_SECRET', 'AMAZON_SP_REFRESH_TOKEN'] },
+  { id: 'amazon', name: 'Amazon', ready: true, how: 'Solution Provider Portal → uygulama → LWA credentials ve Authorize', env: ['AMAZON_SP_CLIENT_ID', 'AMAZON_SP_CLIENT_SECRET', 'AMAZON_SP_REFRESH_TOKEN'] },
 ] as const
 
 async function token() {
@@ -94,10 +95,25 @@ export default function IntegrationsPage() {
   const sync = async (channel: string, days?: number) => {
     setBusy(channel)
     try {
-      const res = await fetch(`/api/sync/${channel}${days ? `?days=${days}` : ''}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
-      const body = await res.json()
-      if (!body.ok) throw new Error(body.message)
-      toast(`${body.fetched} paket okundu: ${body.imported} yeni satış, ${body.updated} durum güncellemesi${body.linked ? `, ${body.linked} elle girilmiş satışa bağlandı` : ''}${body.unmatched?.length ? `, ${body.unmatched.length} eşleşmeyen ürün` : ''}.`)
+      // Amazon'un istek sınırı düşük: süre yetmezse "devamı var" döner, kaldığı yerden birkaç tur daha çalıştırılır.
+      const sum = { fetched: 0, imported: 0, updated: 0, linked: 0, unmatched: 0 }
+      let body: any
+      let first = true
+      for (let round = 0; round < 8; round++) {
+        const q = first && days ? `?days=${days}` : ''
+        first = false
+        const res = await fetch(`/api/sync/${channel}${q}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+        body = await res.json()
+        if (!body.ok) throw new Error(body.message)
+        sum.fetched += body.fetched
+        sum.imported += body.imported
+        sum.updated += body.updated
+        sum.linked += body.linked ?? 0
+        sum.unmatched = Math.max(sum.unmatched, body.unmatched?.length ?? 0)
+        if (!body.more) break
+        invalidate('sync_runs')
+      }
+      toast(`${sum.fetched} sipariş okundu: ${sum.imported} yeni satış, ${sum.updated} durum güncellemesi${sum.linked ? `, ${sum.linked} elle girilmiş satışa bağlandı` : ''}${sum.unmatched ? `, ${sum.unmatched} eşleşmeyen ürün` : ''}${body?.more ? '. Devamı var, tekrar basın.' : '.'}`)
       invalidate('sync_runs', 'sync_unmatched', ...AFTER.sale)
     } catch (e: any) {
       toast(e.message, 'error')
