@@ -603,3 +603,168 @@ export function ShareBar({ parts, format = shortNum }: { parts: { id: string; la
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/* Gerçekleşen + tahmin (kesikli çizgi ve belirsizlik bandı)          */
+/* ------------------------------------------------------------------ */
+export function ForecastChart({
+  labels,
+  actual,
+  partialLast = false,
+  forecast,
+  lower,
+  upper,
+  height = 260,
+  color = '#2a78d6',
+  format = shortNum,
+}: {
+  labels: string[]
+  /** Gerçekleşen değerler (labels'ın ilk actual.length elemanı) */
+  actual: number[]
+  /** Son gerçekleşen nokta henüz bitmemiş dönem mi (içinde bulunulan hafta) */
+  partialLast?: boolean
+  forecast: number[]
+  lower: number[]
+  upper: number[]
+  height?: number
+  color?: string
+  format?: (v: number) => string
+}) {
+  const [ref, w] = useWidth<HTMLDivElement>()
+  const [hover, setHover] = useState<number | null>(null)
+  const padL = 48
+  const padR = 12
+  const padT = 12
+  const padB = 28
+  const n = labels.length
+  const na = actual.length
+  // tahmin, son TAMAMLANMIŞ noktadan başlar
+  const anchor = partialLast ? na - 2 : na - 1
+  const ticks = niceTicks(0, Math.max(1, ...actual, ...upper))
+  const yMax = ticks[ticks.length - 1]
+  const iw = Math.max(1, w - padL - padR)
+  const ih = height - padT - padB
+  const X = (i: number) => padL + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw)
+  const Y = (v: number) => padT + ih - (v / yMax) * ih
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 64))))
+  const fIdx = (k: number) => anchor + 1 + k
+  const full = partialLast ? actual.slice(0, -1) : actual
+  const line = full.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('')
+  const fLine = [`M${X(anchor)},${Y(full[anchor] ?? 0)}`, ...forecast.map((v, k) => `L${X(fIdx(k))},${Y(v)}`)].join('')
+  const band =
+    `M${X(anchor)},${Y(full[anchor] ?? 0)}` +
+    upper.map((v, k) => `L${X(fIdx(k))},${Y(v)}`).join('') +
+    lower
+      .map((v, k) => [k, v] as const)
+      .reverse()
+      .map(([k, v]) => `L${X(fIdx(k))},${Y(v)}`)
+      .join('') +
+    'Z'
+  const valueAt = (i: number) => (i <= anchor ? { v: actual[i], kind: 'actual' as const } : i < na && partialLast && i === na - 1 ? { v: actual[i], kind: 'partial' as const, f: forecast[i - anchor - 1] } : { v: forecast[i - anchor - 1], kind: 'forecast' as const, lo: lower[i - anchor - 1], hi: upper[i - anchor - 1] })
+
+  return (
+    <div ref={ref} className="relative w-full select-none" style={{ height }}>
+      {w > 0 && (
+        <svg width={w} height={height} role="img" aria-label="Gerçekleşen satış ve tahmin">
+          <defs>
+            <linearGradient id="fc-area" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stopColor={color} stopOpacity="0.16" />
+              <stop offset="1" stopColor={color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {/* tahmin bölgesi zemini */}
+          <rect x={X(anchor)} y={padT} width={X(n - 1) - X(anchor)} height={ih} fill="#F7F6F2" />
+          <text x={X(anchor) + 6} y={padT + 12} fontSize="10.5" fontWeight="700" fill={AXIS_TEXT}>
+            TAHMİN
+          </text>
+          {ticks.map((t) => (
+            <g key={t}>
+              <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke={t === 0 ? '#D6D3CA' : GRID} />
+              <text x={padL - 8} y={Y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill={AXIS_TEXT}>
+                {shortNum(t)}
+              </text>
+            </g>
+          ))}
+          {labels.map((l, i) =>
+            i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2) ? (
+              <text key={i} x={X(i)} y={height - 8} textAnchor="middle" fontSize="11" fill={AXIS_TEXT}>
+                {l}
+              </text>
+            ) : null,
+          )}
+          <path d={band} fill={color} fillOpacity="0.1" />
+          {full.length > 1 && <path d={`${line}L${X(full.length - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} fill="url(#fc-area)" />}
+          <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={fLine} fill="none" stroke={color} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" />
+          {partialLast && <circle cx={X(na - 1)} cy={Y(actual[na - 1])} r="4" fill="#fff" stroke={color} strokeWidth="2" />}
+          {hover !== null && (
+            <>
+              <line x1={X(hover)} x2={X(hover)} y1={padT} y2={padT + ih} stroke="#0E1527" strokeOpacity="0.25" />
+              <circle cx={X(hover)} cy={Y(valueAt(hover).v)} r="4.5" fill={color} stroke="#fff" strokeWidth="2" />
+            </>
+          )}
+          <rect
+            x={padL}
+            y={0}
+            width={iw}
+            height={height}
+            fill="transparent"
+            onMouseMove={(e) => {
+              const r = (e.currentTarget as SVGRectElement).getBoundingClientRect()
+              setHover(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width) * (n - 1)))))
+            }}
+            onMouseLeave={() => setHover(null)}
+          />
+        </svg>
+      )}
+      {hover !== null &&
+        w > 0 &&
+        (() => {
+          const p = valueAt(hover)
+          return (
+            <Tooltip x={X(hover)} y={Y(p.v)} w={w}>
+              <p className="mb-1 font-bold">{labels[hover]} haftası</p>
+              {p.kind === 'actual' && <TipRow color={color} label="Gerçekleşen" value={format(p.v)} />}
+              {p.kind === 'partial' && (
+                <>
+                  <TipRow color={color} label="Şimdiye kadar" value={format(p.v)} />
+                  <TipRow color={color} dashed label="Hafta sonu tahmini" value={format(p.f ?? 0)} />
+                </>
+              )}
+              {p.kind === 'forecast' && (
+                <>
+                  <TipRow color={color} dashed label="Tahmin" value={format(p.v)} />
+                  <TipRow label="Olası aralık" value={`${format(p.lo ?? 0)} – ${format(p.hi ?? 0)}`} />
+                </>
+              )}
+            </Tooltip>
+          )
+        })()}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Küçük sütunlar (haftanın günleri vb.) — en yüksek vurgulu           */
+/* ------------------------------------------------------------------ */
+export function MiniBars({ labels, values, format = shortNum, height = 150, color = '#2a78d6' }: { labels: string[]; values: number[]; format?: (v: number) => string; height?: number; color?: string }) {
+  const [hover, setHover] = useState<number | null>(null)
+  const max = Math.max(1, ...values)
+  const top = values.indexOf(Math.max(...values))
+  return (
+    <div className="flex items-end gap-2" style={{ height }}>
+      {values.map((v, i) => (
+        <div key={i} className="relative flex h-full flex-1 flex-col items-center justify-end gap-1.5" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+          {hover === i && (
+            <span className="absolute -top-1 z-10 -translate-y-full whitespace-nowrap rounded-lg bg-night px-2 py-1 text-[11px] font-bold text-white">{format(v)}</span>
+          )}
+          <div
+            className="w-full max-w-[38px] rounded-t-[4px] transition-opacity"
+            style={{ height: `${Math.max(2, (v / max) * (height - 26))}px`, backgroundColor: color, opacity: i === top ? 1 : hover === i ? 0.75 : 0.35 }}
+          />
+          <span className={cx('text-[11px] font-semibold', i === top ? 'text-ink' : 'text-ink-soft/55')}>{labels[i]}</span>
+        </div>
+      ))}
+    </div>
+  )
+}

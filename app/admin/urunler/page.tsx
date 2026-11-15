@@ -3,6 +3,7 @@
 import { Suspense, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useOpenFromQuery } from '@/components/panel/forms'
 import { ArrowLeft, Boxes, Palette, Pencil, Plus, Ruler } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRANDS, itemImage, label, type Brand } from '@/lib/panel/constants'
@@ -39,6 +40,7 @@ function Products() {
   const router = useRouter()
   const { data: items, loading, error } = useItemsWithStock()
   const [newItem, setNewItem] = useState(false)
+  useOpenFromQuery(() => setNewItem(true))
   const modelKeyParam = params.get('model')
   const brand = (params.get('marka') as Brand) || (modelKeyParam?.split('|')[0] as Brand) || 'formstep'
   const setBrand = (b: Brand) => router.push(`/admin/urunler?marka=${b}`)
@@ -112,6 +114,7 @@ const sameOrNull = (m: Model, k: 'price' | 'cost' | 'vat_rate' | 'min_stock') =>
 }
 
 function ModelCard({ m }: { m: Model }) {
+  if (m.brand === 'seryn') return <SerynCard m={m} />
   const img = itemImage(m.items[0])
   const cost = sameOrNull(m, 'cost')
   const vat = sameOrNull(m, 'vat_rate')
@@ -155,6 +158,52 @@ function ModelCard({ m }: { m: Model }) {
             {cost ? ` + %${num(vat ?? 20)} KDV` : ''} · Satış <b className="text-ink">{price === null ? 'karışık' : tl(price, true)}</b>
           </span>
           {lows > 0 && <StatusPill tone="critical">{lows} kritik</StatusPill>}
+        </div>
+      </Card>
+    </Link>
+  )
+}
+
+function SerynCard({ m }: { m: Model }) {
+  return (
+    <Link href={`/admin/urunler?model=${encodeURIComponent(m.key)}`} className="group block sm:col-span-2 lg:col-span-3">
+      <Card className="h-full transition group-hover:ring-[#E3AB3B]">
+        <p className="font-display text-lg font-black text-ink">{m.name}</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {m.items.map((i) => {
+            const img = itemImage(i)
+            const low = i.active && i.min_stock > 0 && i.total <= i.min_stock
+            return (
+              <div key={i.id} className="flex items-center gap-3 rounded-xl bg-[#F4F3EF] p-2.5">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+                  {img ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={img} alt="" className="h-full w-full object-contain p-1" />
+                  ) : (
+                    <Boxes className="h-6 w-6 text-ink-soft/30" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-ink">{i.variant || 'Varyant'}</p>
+                  <p className="font-display text-xl font-black tabular-nums leading-tight text-ink">
+                    {num(i.total)} <span className="text-xs font-semibold text-ink-soft/60">{i.unit}</span>
+                  </p>
+                  <p className="text-xs text-ink-soft/60">
+                    depo {num(i.stock.depo)} · FBA {num(i.stock.amazon)}
+                    {i.stock.yolda ? ` · yolda ${num(i.stock.yolda)}` : ''}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-soft">
+                    Satış <b className="text-ink">{tl(i.price, true)}</b>
+                    {low && (
+                      <span className="ml-1.5">
+                        <StatusPill tone="critical">kritik</StatusPill>
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </Card>
     </Link>

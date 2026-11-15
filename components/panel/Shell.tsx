@@ -22,70 +22,112 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
 import { passwordProblem } from '@/lib/panel/security'
 import { Button, cx, Drawer, Field, Input, useUi } from './ui'
 
-const NAV: { group: string; items: { href: string; label: string; icon: typeof Boxes; short?: string }[] }[] = [
-  { group: '', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard, short: 'Özet' }] },
+type NavPage = { href: string; label: string; icon: typeof Boxes; hint?: string }
+type NavSection = NavPage & { pages?: NavPage[] }
+
+// Ana menü 8 bölüm; birbirine yakın sayfalar bölümün içinde sekme olarak durur.
+const NAV: NavSection[] = [
+  { href: '/admin', label: 'Genel bakış', icon: LayoutDashboard },
+  { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
+  { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
   {
-    group: 'Ticaret',
-    items: [
-      { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
-      { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
-      { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+    href: '/admin/stok',
+    label: 'Ürün ve stok',
+    icon: Boxes,
+    pages: [
+      { href: '/admin/stok', label: 'Stok', icon: Boxes, hint: 'Ne kadar var, ne zaman biter' },
+      { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag, hint: 'Fiyat, maliyet, numara ve renkler' },
+      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator, hint: 'Bir satıştan ne kalır' },
+    ],
+  },
+  { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+  {
+    href: '/admin/finans',
+    label: 'Para',
+    icon: Wallet,
+    pages: [
+      { href: '/admin/finans', label: 'Finans', icon: Wallet, hint: 'Gelir, gider, alacak, borç' },
+      { href: '/admin/reklam', label: 'Reklam', icon: Megaphone, hint: 'Harcama ve bütçe' },
     ],
   },
   {
-    group: 'Ürün ve stok',
-    items: [
-      { href: '/admin/urunler', label: 'Ürünler', icon: Tag },
-      { href: '/admin/stok', label: 'Stok', icon: Boxes },
-      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator },
+    href: '/admin/isler',
+    label: 'Ekip',
+    icon: ListChecks,
+    pages: [
+      { href: '/admin/isler', label: 'İşler', icon: ListChecks, hint: 'Yapılacaklar' },
+      { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe, hint: 'Hesaplar, alan adları' },
+      { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History, hint: 'Kim neyi değiştirdi' },
     ],
   },
   {
-    group: 'Para',
-    items: [
-      { href: '/admin/finans', label: 'Finans', icon: Wallet },
-      { href: '/admin/reklam', label: 'Reklam', icon: Megaphone },
-    ],
-  },
-  {
-    group: 'Ekip',
-    items: [
-      { href: '/admin/isler', label: 'İşler', icon: ListChecks },
-      { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe },
-      { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History },
-    ],
-  },
-  {
-    group: 'Site',
-    items: [
-      { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug },
-      { href: '/admin/vitrin', label: 'Vitrin', icon: Store },
+    href: '/admin/entegrasyonlar',
+    label: 'Site ve bağlantılar',
+    icon: Plug,
+    pages: [
+      { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug, hint: 'Pazaryeri senkronu' },
+      { href: '/admin/vitrin', label: 'Vitrin', icon: Store, hint: 'omytic.com içeriği' },
     ],
   },
 ]
-const ALL_NAV = NAV.flatMap((g) => g.items.map((it) => ({ ...it, group: g.group })))
-const findNav = (path: string | null) =>
-  [...ALL_NAV].sort((a, b) => b.href.length - a.href.length).find((it) => (it.href === '/admin' ? path === '/admin' : path?.startsWith(it.href)))
+const matches = (href: string, path: string | null) => (href === '/admin' ? path === '/admin' : !!path?.startsWith(href))
+const sectionOf = (path: string | null) => NAV.find((s) => (s.pages ?? [s]).some((p) => matches(p.href, path)))
+const pageOf = (path: string | null) => {
+  const s = sectionOf(path)
+  return s && (s.pages ?? [s]).find((p) => matches(p.href, path))
+}
+
+/** Bölümün alt sayfaları: sayfanın üstünde sekme olarak */
+function SectionTabs() {
+  const path = usePathname()
+  const s = sectionOf(path)
+  if (!s?.pages) return null
+  return (
+    <div className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0 [scrollbar-width:none]">
+      <div className="inline-flex gap-1 rounded-2xl bg-white p-1 ring-1 ring-black/[0.06]">
+        {s.pages.map((p) => {
+          const active = matches(p.href, path)
+          return (
+            <Link
+              key={p.href}
+              href={p.href}
+              title={p.hint}
+              className={cx(
+                'flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors',
+                active ? 'bg-night text-white' : 'text-ink-soft/70 hover:bg-[#F4F3EF] hover:text-ink',
+              )}
+            >
+              <p.icon className={cx('h-4 w-4', active ? 'text-thread' : 'text-ink-soft/45')} />
+              {p.label}
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 // Telefonda alttaki sekme çubuğu
 const TABS = [
   { href: '/admin', label: 'Özet', icon: LayoutDashboard },
   { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
-  { href: '/admin/urunler', label: 'Ürünler', icon: Tag },
   { href: '/admin/stok', label: 'Stok', icon: Boxes },
+  { href: '/admin/finans', label: 'Para', icon: Wallet },
 ]
 
 const QUICK = [
   { href: '/admin/satislar?yeni=1', label: 'Satış', icon: ShoppingBag },
   { href: '/admin/alimlar?yeni=1', label: 'Mal alımı', icon: PackagePlus },
   { href: '/admin/sevkiyat?yeni=1', label: 'Amazon sevkiyatı', icon: Truck },
+  { href: '/admin/urunler?yeni=1', label: 'Ürün / model', icon: Tag },
+  { href: '/admin/stok?sayim=1', label: 'Stok sayımı', icon: ClipboardCheck },
   { href: '/admin/finans?yeni=1', label: 'Gelir / gider', icon: Wallet },
   { href: '/admin/reklam?yeni=1', label: 'Reklam harcaması', icon: Megaphone },
   { href: '/admin/isler?yeni=1', label: 'İş', icon: ListChecks },
@@ -103,42 +145,37 @@ function Mark() {
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname()
-  const isActive = (href: string) => (href === '/admin' ? path === '/admin' : path?.startsWith(href))
+  const current = sectionOf(path)
   return (
-    <nav className="space-y-4">
-      {NAV.map((g) => (
-        <div key={g.group || 'root'}>
-          {g.group && <p className="mb-1 px-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-white/30">{g.group}</p>}
-          <ul className="space-y-0.5">
-            {g.items.map((it) => {
-              const active = isActive(it.href)
-              return (
-                <li key={it.href}>
-                  <Link
-                    href={it.href}
-                    onClick={onNavigate}
-                    className={cx(
-                      'relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] font-semibold transition-colors',
-                      active ? 'text-white' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
-                    )}
-                  >
-                    {active && (
-                      <motion.span
-                        layoutId="nav-active"
-                        className="absolute inset-0 rounded-xl bg-white/[0.08] ring-1 ring-inset ring-white/10"
-                        transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-                      />
-                    )}
-                    {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
-                    <it.icon className={cx('relative h-[18px] w-[18px]', active ? 'text-thread' : '')} />
-                    <span className="relative">{it.label}</span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      ))}
+    <nav>
+      <ul className="space-y-0.5">
+        {NAV.map((it) => {
+          const active = current === it
+          return (
+            <li key={it.href}>
+              <Link
+                href={it.href}
+                onClick={onNavigate}
+                className={cx(
+                  'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-colors',
+                  active ? 'text-white' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
+                )}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="nav-active"
+                    className="absolute inset-0 rounded-xl bg-white/[0.08] ring-1 ring-inset ring-white/10"
+                    transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                  />
+                )}
+                {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
+                <it.icon className={cx('relative h-[18px] w-[18px]', active ? 'text-thread' : '')} />
+                <span className="relative">{it.label}</span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
     </nav>
   )
 }
@@ -294,7 +331,8 @@ export default function Shell({ children }: { children: ReactNode }) {
       </button>
     </div>
   )
-  const current = findNav(path)
+  const section = sectionOf(path)
+  const current = pageOf(path)
 
   return (
     <div className="min-h-screen bg-[#F4F3EF] font-sans text-ink">
@@ -345,8 +383,8 @@ export default function Shell({ children }: { children: ReactNode }) {
             </button>
             {current && current.href !== '/admin' ? (
               <p className="flex min-w-0 items-center gap-2 text-sm">
-                {current.group && <span className="hidden text-ink-soft/50 sm:inline">{current.group}</span>}
-                {current.group && <span className="hidden text-ink-soft/30 sm:inline">/</span>}
+                {section?.pages && <span className="hidden text-ink-soft/50 sm:inline">{section.label}</span>}
+                {section?.pages && <span className="hidden text-ink-soft/30 sm:inline">/</span>}
                 <current.icon className="h-4 w-4 shrink-0 text-ink-soft/60" />
                 <b className="truncate text-ink">{current.label}</b>
               </p>
@@ -364,14 +402,17 @@ export default function Shell({ children }: { children: ReactNode }) {
             <QuickAdd />
           </div>
         </header>
-        <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-8">
+          <SectionTabs />
+          {children}
+        </main>
       </div>
 
       {/* Telefonda alt sekme çubuğu */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.06] bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Ana sayfalar">
         <ul className="mx-auto grid max-w-md grid-cols-5">
           {TABS.map((t) => {
-            const active = t.href === '/admin' ? path === '/admin' : path?.startsWith(t.href)
+            const active = t.href === '/admin' ? path === '/admin' : sectionOf(path)?.href === t.href
             return (
               <li key={t.href}>
                 <Link href={t.href} className={cx('flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold', active ? 'text-ink' : 'text-ink-soft/50')}>

@@ -10,6 +10,7 @@ import { AFTER, invalidate, Q, useItemsWithStock, write, type ItemWithStock, typ
 import { daysBetween, dateTR, monthKey, num, tl, today } from '@/lib/panel/format'
 import { velocities } from '@/lib/panel/insights'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { LinesSummary } from '@/components/panel/LinesSummary'
 import { Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
 
 const COLS = [
@@ -158,14 +159,7 @@ export default function ShipmentsPage() {
                         </div>
                         <span className="font-display text-lg font-black text-ink">{num(qtyOf(s))}</span>
                       </div>
-                      <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
-                        {s.shipment_items.slice(0, 4).map((l, i) => (
-                          <li key={i} className="truncate">
-                            <b className="text-ink">{num(l.qty)}×</b> {label(l.item_id)}
-                          </li>
-                        ))}
-                        {s.shipment_items.length > 4 && <li>+{s.shipment_items.length - 4} ürün daha</li>}
-                      </ul>
+                      <LinesSummary lines={s.shipment_items} items={items} price={false} className="mt-2 text-xs" />
                       <div className="mt-3 flex items-center gap-1">
                         {c.next && (
                           <Button size="sm" onClick={() => advance(s, c.next!)} icon={c.next === 'yolda' ? <ArrowRight className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}>

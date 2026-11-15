@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Boxes, ChevronRight, ClipboardCheck, Percent, Pencil, Plus, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
@@ -12,10 +12,11 @@ import { HBars, ShareBar } from '@/components/panel/charts'
 import { ItemSelect, useOpenFromQuery } from '@/components/panel/forms'
 import { ItemForm } from '@/components/panel/ItemForm'
 import { CostsDrawer, NetProfit } from '@/components/panel/costs'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ReorderTab } from '@/components/panel/ReorderTab'
 import { Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
 
-type Tab = 'urunler' | 'hareketler'
+type Tab = 'urunler' | 'siparis' | 'hareketler'
 
 export default function StockPage() {
   const { data: items, loading, error } = useItemsWithStock()
@@ -32,6 +33,16 @@ export default function StockPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const channelCosts = Q.channelCosts()
   useOpenFromQuery(() => setItemForm('new'))
+  // Genel bakıştan gelen kısayollar: ?sekme=siparis, ?sayim=1, ?maliyet=1
+  const params = useSearchParams()
+  useEffect(() => {
+    const t = params.get('sekme')
+    if (t === 'siparis' || t === 'hareketler') setTab(t)
+    if (params.get('sayim') === '1') setCount(true)
+    if (params.get('maliyet') === '1') setCostsOpen(true)
+    if (params.get('sayim') || params.get('maliyet')) router.replace(window.location.pathname)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const vel = useMemo(() => velocities(lines.data ?? [], 30), [lines.data])
   const list = useMemo(
@@ -55,7 +66,7 @@ export default function StockPage() {
     <>
       <PageHeader
         title="Stok"
-        subtitle="Stok satış, alım ve sevkiyatlardan otomatik hesaplanır. Buradan sadece ürün kartı, sayım ve fire girersiniz."
+        subtitle="Satış, alım ve sevkiyat girildikçe stok kendiliğinden değişir. Buraya sadece sayım ve fire girilir."
         actions={
           <>
             <Button variant="secondary" icon={<Percent className="h-4 w-4" />} onClick={() => setCostsOpen(true)}>
@@ -121,7 +132,7 @@ export default function StockPage() {
 
       <div className="mb-3 mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented value={tab} onChange={setTab} options={[{ id: 'urunler', label: 'Ürünler' }, { id: 'hareketler', label: 'Hareketler' }]} />
+          <Segmented value={tab} onChange={setTab} options={[{ id: 'urunler', label: 'Ürünler' }, { id: 'siparis', label: 'Sipariş önerisi' }, { id: 'hareketler', label: 'Hareketler' }]} />
         </div>
         {tab === 'urunler' && (
           <div className="flex items-center gap-3">
@@ -134,7 +145,9 @@ export default function StockPage() {
         )}
       </div>
 
-      {tab === 'urunler' ? (
+      {tab === 'siparis' ? (
+        <ReorderTab items={active} lines={lines.data ?? []} loading={loading || lines.loading} />
+      ) : tab === 'urunler' ? (
         <Card pad={false}>
           {loading ? (
             <div className="space-y-2 p-5">

@@ -16,7 +16,7 @@ import {
   SERIES,
   type BrandOrGenel,
 } from '@/lib/panel/constants'
-import { AFTER, invalidate, Q, write, type LedgerRow, type Transaction } from '@/lib/panel/data'
+import { AFTER, invalidate, Q, useLocalState, write, type LedgerRow, type Transaction } from '@/lib/panel/data'
 import { addDays, daysBetween, dateTR, lastMonths, monthKey, monthLabel, norm, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend, ShareBar, Waterfall } from '@/components/panel/charts'
 import { useOpenFromQuery } from '@/components/panel/forms'
@@ -78,7 +78,38 @@ export default function FinancePage() {
   const receivable = pending.filter((r) => r.direction === 'gelir')
   const payable = pending.filter((r) => r.direction === 'gider')
 
-  const list = rows.filter(
+  // Bir satışın satış + komisyon + kargo satırları tek satırda: net tutar ve kesintiler
+  const [merge, setMerge] = useLocalState('omy-finans-birlestir', true)
+  const merged = useMemo(() => {
+    if (!merge) return rows.map((r) => ({ ...r, fees: null as null | { gross: number; fee: number } }))
+    const out: (LedgerRow & { fees: null | { gross: number; fee: number } })[] = []
+    const sale = new Map<string, LedgerRow & { fees: null | { gross: number; fee: number } }>()
+    rows.forEach((r) => {
+      if (r.source !== 'satis') return out.push({ ...r, fees: null })
+      let m = sale.get(r.ref_id)
+      if (!m) {
+        m = { ...r, category: 'satis', direction: 'gelir', amount: 0, fees: { gross: 0, fee: 0 } }
+        sale.set(r.ref_id, m)
+        out.push(m)
+      }
+      const signed = r.direction === 'gelir' ? Number(r.amount) : -Number(r.amount)
+      m.amount += signed
+      if (r.direction === 'gelir') {
+        m.fees!.gross += Number(r.amount)
+        m.payment_status = r.payment_status
+        m.due_date = r.due_date
+        m.counterparty = r.counterparty ?? m.counterparty
+      } else m.fees!.fee += Number(r.amount)
+    })
+    out.forEach((m) => {
+      if (m.fees && m.amount < 0) {
+        m.direction = 'gider'
+        m.amount = -m.amount
+      }
+    })
+    return out
+  }, [rows, merge])
+  const list = merged.filter(
     (r) => (dir === 'all' || r.direction === dir) && (!q || norm(`${r.counterparty ?? ''} ${r.note ?? ''} ${CATEGORY_LABEL[r.category] ?? r.category}`).includes(norm(q))),
   )
 
@@ -206,6 +237,10 @@ export default function FinancePage() {
         <div className="flex flex-col gap-3 px-5 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-[15px] font-bold text-ink">Defter</h2>
           <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink-soft" title="Satışın komisyon ve kargo satırlarını satışın içinde gösterir">
+              <input type="checkbox" checked={merge} onChange={(e) => setMerge(e.target.checked)} className="h-4 w-4 accent-[#0E1527]" />
+              Satışları tek satırda topla
+            </label>
             <Segmented value={dir} onChange={setDir} size="sm" options={[{ id: 'all', label: 'Hepsi' }, { id: 'gelir', label: 'Giren' }, { id: 'gider', label: 'Çıkan' }]} />
             <SearchBox value={q} onChange={setQ} placeholder="Kişi, firma, not…" />
           </div>
@@ -237,9 +272,9 @@ export default function FinancePage() {
                   <tr key={`${r.source}-${r.ref_id}-${r.category}-${idx}`}>
                     <td className="whitespace-nowrap text-ink-soft">{dateTR(r.tx_date)}</td>
                     <td>
-                      <p className="font-semibold text-ink">{CATEGORY_LABEL[r.category] ?? r.category}</p>
+                      <p className="font-semibold text-ink">{r.fees ? 'Satış (net)' : CATEGORY_LABEL[r.category] ?? r.category}</p>
                       <p className="text-xs text-ink-soft/50">
-                        {SOURCE[r.source]}
+                        {r.fees ? (r.fees.fee > 0 ? `${tl(r.fees.gross, true)} − ${tl(r.fees.fee, true)} komisyon/kargo` : 'kesinti yok') : SOURCE[r.source]}
                         {r.channel ? ` · ${label(CHANNELS, r.channel)}` : ''}
                       </p>
                     </td>

@@ -8,6 +8,7 @@ import { BRANDS } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type Purchase } from '@/lib/panel/data'
 import { dateTR, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend } from '@/components/panel/charts'
+import { LinesSummary } from '@/components/panel/LinesSummary'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
 import { Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
 
@@ -132,15 +133,8 @@ export default function PurchasesPage() {
                       <p className="font-semibold text-ink">{p.supplier || '—'}</p>
                       {p.invoice_no && <p className="text-xs text-ink-soft/60">Fatura {p.invoice_no}</p>}
                     </td>
-                    <td className="max-w-[280px]">
-                      {p.purchase_items.map((l, i) => {
-                        const it = items?.find((x) => x.id === l.item_id)
-                        return (
-                          <p key={i} className="truncate text-ink-soft">
-                            <b className="text-ink">{num(l.qty)}×</b> {it?.label ?? '…'} <span className="text-xs">@ {tl(l.unit_cost, true)}</span>
-                          </p>
-                        )
-                      })}
+                    <td className="max-w-[320px]">
+                      <LinesSummary lines={p.purchase_items} items={items} />
                     </td>
                     <td className="text-right font-bold tabular-nums">
                       {tl(purchaseTotal(p))}
