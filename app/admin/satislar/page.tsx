@@ -1,14 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, ShoppingBag, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { CHANNELS, colorOf, label, PAYMENT_STATUS, productImage, SALE_STATUS, type Channel } from '@/lib/panel/constants'
-import { AFTER, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
+import { AFTER, estimateCosts, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
 import { addDays, dateTimeTR, dateTR, relTime, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
-import { emptyLine, LinesEditor, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
 import { Badge, Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
 
 type Range = '30' | '90' | '365' | 'all'
@@ -239,14 +239,31 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
     due_date: sale?.due_date ?? '',
     note: sale?.note ?? '',
   })
-  const [lines, setLines] = useState<Line[]>(
+  const [rawLines, setLines] = useState<Line[]>(
     sale?.sale_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: String(l.unit_price), location_id: l.location_id })) ?? [emptyLine()],
   )
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
   const defaultLoc = f.channel === 'amazon' ? 'amazon' : 'depo'
-  const subtotal = lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const subtotal = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
   const net = subtotal - (Number(f.commission) || 0) - (Number(f.shipping_cost) || 0)
+
+  // Komisyon ve kargo, Stok → Kanal maliyetleri'nden otomatik hesaplanır; elle değiştirilirse dokunulmaz.
+  const costs = Q.channelCosts()
+  const [autoCost, setAutoCost] = useState(!sale || (Number(sale.commission) === 0 && Number(sale.shipping_cost) === 0))
+  const est = useMemo(
+    () =>
+      estimateCosts(
+        costs.data,
+        f.channel,
+        realLines(rawLines).map((l) => ({ name: items.find((i) => i.id === l.item_id)?.name ?? '', qty: Number(l.qty), price: Number(l.price) || 0 })),
+      ),
+    [costs.data, f.channel, rawLines, items],
+  )
+  useEffect(() => {
+    if (!autoCost) return
+    setF((x) => ({ ...x, commission: est ? String(est.commission) : '', shipping_cost: est ? String(est.fee) : '' }))
+  }, [est, autoCost])
 
   // Düzenlerken, bu satışın kendi düştüğü stok uyarıda tekrar sayılmasın
   const adjusted = useMemo(() => {
@@ -262,7 +279,8 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (lines.some((l) => !l.item_id || !(Number(l.qty) > 0))) return toast('Her satırda ürün ve miktar olmalı.', 'error')
+    const lines = realLines(rawLines)
+    if (!lines.length) return toast('En az bir ürün için adet girin.', 'error')
     setBusy(true)
     try {
       await write(
@@ -318,7 +336,7 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
               onChange={(e) => {
                 const ch = e.target.value as Channel
                 set({ channel: ch })
-                setLines(lines.map((l) => ({ ...l, location_id: ch === 'amazon' ? 'amazon' : l.location_id === 'amazon' ? 'depo' : l.location_id })))
+                setLines(rawLines.map((l) => ({ ...l, location_id: ch === 'amazon' ? 'amazon' : l.location_id === 'amazon' ? 'depo' : l.location_id })))
               }}
             >
               {CHANNELS.map((c) => (
@@ -350,16 +368,47 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
 
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Ürünler</p>
-          <LinesEditor items={adjusted} lines={lines} setLines={setLines} priceFrom="price" priceLabel="Satış fiyatı" stockFrom={(l) => l.location_id ?? defaultLoc} showLocation />
+          <LinesEditor items={adjusted} lines={rawLines} setLines={setLines} priceFrom="price" priceLabel="Satış fiyatı" stockFrom={(l) => l.location_id ?? defaultLoc} showLocation />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Pazaryeri komisyonu (₺)" hint="Ciro ve net kâr ayrı izlensin diye masraf olarak düşülür.">
-            <Input type="number" min="0" step="any" value={f.commission} onChange={(e) => set({ commission: e.target.value })} placeholder="0" />
+          <Field label="Pazaryeri komisyonu (₺)" hint={autoCost && est ? 'Kanal maliyetinden otomatik hesaplandı.' : 'Ciro ve net kâr ayrı izlensin diye masraf olarak düşülür.'}>
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              value={f.commission}
+              onChange={(e) => {
+                setAutoCost(false)
+                set({ commission: e.target.value })
+              }}
+              placeholder="0"
+            />
           </Field>
-          <Field label="Kargo masrafı (₺)">
-            <Input type="number" min="0" step="any" value={f.shipping_cost} onChange={(e) => set({ shipping_cost: e.target.value })} placeholder="0" />
+          <Field label="Kargo / FBA masrafı (₺)" hint={autoCost && est ? 'Kanal maliyetinden otomatik hesaplandı.' : undefined}>
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              value={f.shipping_cost}
+              onChange={(e) => {
+                setAutoCost(false)
+                set({ shipping_cost: e.target.value })
+              }}
+              placeholder="0"
+            />
           </Field>
+          {!autoCost && est && (
+            <p className="-mt-1 text-xs text-ink-soft sm:col-span-2">
+              Kanal maliyetine göre {tl(est.commission)} komisyon, {tl(est.fee)} kargo olmalı.{' '}
+              <button type="button" className="font-semibold text-ink underline" onClick={() => setAutoCost(true)}>
+                Otomatik hesaba dön
+              </button>
+            </p>
+          )}
+          {!est && ['amazon', 'trendyol', 'hepsiburada'].includes(f.channel) && (
+            <p className="-mt-1 text-xs text-ink-soft/70 sm:col-span-2">Bu kanal için komisyon ve kargo tanımlı değil. Stok → Kanal maliyetleri’nden bir kez girerseniz her satışta otomatik hesaplanır.</p>
+          )}
           <Field label="Tahsilat">
             <Select value={f.payment_status} onChange={(e) => set({ payment_status: e.target.value as any })}>
               {PAYMENT_STATUS.map((s) => (

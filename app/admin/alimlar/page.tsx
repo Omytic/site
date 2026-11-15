@@ -8,7 +8,7 @@ import { BRANDS } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type Purchase } from '@/lib/panel/data'
 import { dateTR, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend } from '@/components/panel/charts'
-import { emptyLine, LinesEditor, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
 import { Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
 
 const purchaseTotal = (p: Purchase) => p.purchase_items.reduce((a, l) => a + Number(l.qty) * Number(l.unit_cost), 0)
@@ -190,16 +190,17 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
     due_date: purchase?.due_date ?? '',
     note: purchase?.note ?? '',
   })
-  const [lines, setLines] = useState<Line[]>(
+  const [rawLines, setLines] = useState<Line[]>(
     purchase?.purchase_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: String(l.unit_cost), location_id: l.location_id })) ?? [emptyLine()],
   )
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
-  const total = lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) + (Number(f.shipping_cost) || 0)
+  const total = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) + (Number(f.shipping_cost) || 0)
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (lines.some((l) => !l.item_id || !(Number(l.qty) > 0))) return toast('Her satırda ürün ve miktar olmalı.', 'error')
+    const lines = realLines(rawLines)
+    if (!lines.length) return toast('En az bir ürün için adet girin.', 'error')
     setBusy(true)
     try {
       await write(
@@ -263,7 +264,7 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
         </div>
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Gelen ürünler</p>
-          <LinesEditor items={items} lines={lines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation />
+          <LinesEditor items={items} lines={rawLines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Ödeme">

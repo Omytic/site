@@ -9,7 +9,7 @@ import type { Brand, BrandOrGenel, Channel, LocationId, Unit } from './constants
 // ---------------------------------------------------------------------------
 export interface Profile { id: string; username: string; full_name: string; color: string }
 export interface Item {
-  id: string; sku: string | null; name: string; brand: Brand; variant: string | null; unit: Unit
+  id: string; sku: string | null; name: string; brand: Brand; variant: string | null; color?: string | null; unit: Unit
   cost: number; price: number; min_stock: number; active: boolean; notes: string | null; created_at: string
 }
 export interface StockLevel { item_id: string; location_id: LocationId; qty: number }
@@ -184,6 +184,7 @@ export const Q = {
   tasks: () => useQuery('tasks', () => must<Task[]>(supabase.from('tasks').select('*').order('created_at', { ascending: false }))),
   assets: () => useQuery('assets', () => must<Asset[]>(supabase.from('assets').select('*').order('brand').order('name'))),
   assetMetrics: () => useQuery('asset_metrics', () => must<AssetMetric[]>(supabase.from('asset_metrics').select('*').order('metric_date'))),
+  channelCosts: () => useQuery('channel_costs', () => must<ChannelCost[]>(supabase.from('channel_costs').select('*').order('channel'))),
   audit: (limit = 300) =>
     useQuery(`audit:${limit}`, () => must<AuditRow[]>(supabase.from('audit_log').select('*').order('at', { ascending: false }).limit(limit))),
 }
@@ -199,6 +200,7 @@ export const AFTER = {
   ads: ['ad_budgets', 'ad_spend', 'ledger', 'audit:300', 'audit:40'],
   tasks: ['tasks', 'audit:300', 'audit:40'],
   assets: ['assets', 'asset_metrics', 'audit:300', 'audit:40'],
+  costs: ['channel_costs', 'audit:300', 'audit:40'],
 }
 
 /** Supabase yazma işlemini çalıştırır, hata varsa Türkçe mesajla fırlatır. */
@@ -252,8 +254,80 @@ export interface ItemWithStock extends Item {
   total: number
   label: string
 }
-export function itemLabel(i: Pick<Item, 'name' | 'variant'>) {
-  return i.variant ? `${i.name} · ${i.variant}` : i.name
+export function variantLabel(i: Pick<Item, 'variant' | 'color'>) {
+  return [i.variant, i.color].filter(Boolean).join(' · ')
+}
+export function itemLabel(i: Pick<Item, 'name' | 'variant' | 'color'>) {
+  const v = variantLabel(i)
+  return v ? `${i.name} · ${v}` : i.name
+}
+
+// ---------------------------------------------------------------------------
+// Model = aynı marka + aynı ürün adı (ör. FormStep M100). Varyantlar = numara / renk.
+// ---------------------------------------------------------------------------
+export interface Model<T extends ItemWithStock = ItemWithStock> {
+  key: string
+  name: string
+  brand: Brand
+  items: T[]
+  stock: Record<LocationId, number>
+  total: number
+}
+export const modelKey = (i: Pick<Item, 'brand' | 'name'>) => `${i.brand}|${i.name.trim().toLocaleLowerCase('tr')}`
+
+/** Numaraları doğal sırayla dizer: 36-37 < 37-38 < … < 43-45; renk varsa önce renk. */
+export function sortVariants<T extends Pick<Item, 'variant' | 'color'>>(list: T[]) {
+  const n = (v: string | null) => {
+    const m = (v ?? '').match(/\d+(?:[.,]\d+)?/)
+    return m ? Number(m[0].replace(',', '.')) : Number.MAX_SAFE_INTEGER
+  }
+  return [...list].sort((a, b) => (a.color ?? '').localeCompare(b.color ?? '', 'tr') || n(a.variant) - n(b.variant) || (a.variant ?? '').localeCompare(b.variant ?? '', 'tr'))
+}
+
+export function groupModels<T extends ItemWithStock>(items: T[]): Model<T>[] {
+  const map = new Map<string, Model<T>>()
+  items.forEach((i) => {
+    const k = modelKey(i)
+    let m = map.get(k)
+    if (!m) {
+      m = { key: k, name: i.name, brand: i.brand, items: [], stock: { depo: 0, yolda: 0, amazon: 0 }, total: 0 }
+      map.set(k, m)
+    }
+    m.items.push(i)
+    m.stock.depo += i.stock.depo
+    m.stock.yolda += i.stock.yolda
+    m.stock.amazon += i.stock.amazon
+    m.total += i.total
+  })
+  return Array.from(map.values()).map((m) => ({ ...m, items: sortVariants(m.items) }))
+}
+
+// ---------------------------------------------------------------------------
+// Kanal maliyetleri: komisyon % + adet başı kargo / FBA ücreti
+// ---------------------------------------------------------------------------
+export interface ChannelCost {
+  id: string; channel: Channel; model: string | null; commission_pct: number; fee_per_unit: number; note: string | null
+  updated_at: string; updated_by: string | null; created_by: string | null
+}
+/** Önce modele özel tanım, yoksa kanalın genel tanımı. */
+export function costFor(costs: ChannelCost[] | undefined, channel: string, model: string) {
+  const list = (costs ?? []).filter((c) => c.channel === channel)
+  const m = model.trim().toLocaleLowerCase('tr')
+  return list.find((c) => c.model && c.model.trim().toLocaleLowerCase('tr') === m) ?? list.find((c) => !c.model) ?? null
+}
+/** Satır listesinden komisyon ve kargo tutarı. Tanım yoksa null. */
+export function estimateCosts(costs: ChannelCost[] | undefined, channel: string, lines: { name: string; qty: number; price: number }[]) {
+  let commission = 0
+  let fee = 0
+  let any = false
+  lines.forEach((l) => {
+    const c = costFor(costs, channel, l.name)
+    if (!c) return
+    any = true
+    commission += (l.qty * l.price * Number(c.commission_pct)) / 100
+    fee += l.qty * Number(c.fee_per_unit)
+  })
+  return any ? { commission: Math.round(commission * 100) / 100, fee: Math.round(fee * 100) / 100 } : null
 }
 export function useItemsWithStock() {
   const items = Q.items()
@@ -269,4 +343,53 @@ export function useItemsWithStock() {
         })
       : undefined
   return { data: list, loading: items.loading || stock.loading, error: items.error || stock.error }
+}
+
+/**
+ * Elimizdeki stok satılırsa: satış değeri, maliyet, tahmini komisyon + kargo ve kalan kâr.
+ * FBA'daki ve Amazon'a yoldaki stok Amazon maliyetiyle; depodaki stok o modelin son 180 günlük
+ * kanal dağılımına göre hesaplanır (satış yoksa kanal gideri düşülmez).
+ */
+export function estimateStock(items: ItemWithStock[], lines: SaleLine[], costs: ChannelCost[] | undefined, since: string) {
+  const mix = new Map<string, Map<string, number>>()
+  lines.forEach((l) => {
+    if (l.status !== 'tamamlandi' || l.sale_date < since) return
+    const k = l.name.trim().toLocaleLowerCase('tr')
+    const m = mix.get(k) ?? new Map<string, number>()
+    m.set(l.channel, (m.get(l.channel) ?? 0) + Number(l.qty))
+    mix.set(k, m)
+  })
+  const unitFee = (channel: string, i: ItemWithStock) => {
+    const c = costFor(costs, channel, i.name)
+    return c ? (i.price * Number(c.commission_pct)) / 100 + Number(c.fee_per_unit) : 0
+  }
+  let retail = 0
+  let cost = 0
+  let fees = 0
+  let covered = 0
+  let units = 0
+  items.forEach((i) => {
+    const az = Math.max(0, i.stock.amazon) + Math.max(0, i.stock.yolda)
+    const dp = Math.max(0, i.stock.depo)
+    const q = az + dp
+    if (!q) return
+    units += q
+    retail += q * i.price
+    cost += q * i.cost
+    fees += az * unitFee('amazon', i)
+    if (az && costFor(costs, 'amazon', i.name)) covered += az
+    const m = mix.get(i.name.trim().toLocaleLowerCase('tr'))
+    const tot = m ? Array.from(m.values()).reduce((a, b) => a + b, 0) : 0
+    if (dp && m && tot > 0) {
+      let f = 0
+      let known = 0
+      m.forEach((n, ch) => {
+        f += (n / tot) * unitFee(ch, i)
+        if (costFor(costs, ch, i.name)) known += n / tot
+      })
+      fees += dp * f
+      covered += dp * known
+    }
+  })
+  return { retail, cost, fees, profit: retail - cost - fees, coverage: units ? covered / units : 0 }
 }

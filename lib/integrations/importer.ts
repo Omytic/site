@@ -60,10 +60,18 @@ export async function defaultFrom(db: SupabaseClient, channel: MarketChannel, no
 export async function importOrders(db: SupabaseClient, channel: MarketChannel, orders: NormOrder[], result: SyncResult, opts: { deadline?: number; onProcessed?: (o: NormOrder) => void } = {}) {
   const label = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada', amazon: 'Amazon' }[channel]
 
-  const [{ data: listings }, { data: items }] = await Promise.all([
+  const [{ data: listings }, { data: items }, { data: costs }] = await Promise.all([
     db.from('channel_listings').select('external_code,item_id').eq('channel', channel),
-    db.from('items').select('id,sku'),
+    db.from('items').select('id,sku,name'),
+    db.from('channel_costs').select('model,commission_pct,fee_per_unit').eq('channel', channel),
   ])
+  const nameOf = new Map<string, string>()
+  ;(items ?? []).forEach((i) => nameOf.set(i.id, String(i.name).trim().toLocaleLowerCase('tr')))
+  // Stok → Kanal maliyetleri: önce modele özel tanım, yoksa kanalın genel tanımı
+  const costOf = (itemId: string) => {
+    const n = nameOf.get(itemId)
+    return (costs ?? []).find((c) => c.model && c.model.trim().toLocaleLowerCase('tr') === n) ?? (costs ?? []).find((c) => !c.model) ?? null
+  }
   const map = new Map<string, string>()
   ;(items ?? []).forEach((i) => i.sku && map.set(i.sku.trim().toLowerCase(), i.id))
   ;(listings ?? []).forEach((l) => map.set(l.external_code.trim().toLowerCase(), l.item_id))
@@ -149,9 +157,24 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
       result.skipped++
       return
     }
+    // Pazaryeri komisyonu vermiyorsa (Amazon) kanal maliyetindeki %; kargo / FBA ücreti adet başı tanımdan
+    let commission = o.commission ?? 0
+    let shipping = 0
+    if (!(commission > 0)) commission = lines.reduce((a, { l, item }) => a + (l.qty * l.unitPrice * Number(costOf(item!)?.commission_pct ?? 0)) / 100, 0)
+    shipping = lines.reduce((a, { l, item }) => a + l.qty * Number(costOf(item!)?.fee_per_unit ?? 0), 0)
     const { data: sale, error } = await db
       .from('sales')
-      .insert({ channel, sale_date: o.saleDate, order_no: o.orderNo, external_ref: o.ref, external_status: o.status, status: o.status, commission: Math.round((o.commission ?? 0) * 100) / 100, note: `${label} senkronu` })
+      .insert({
+        channel,
+        sale_date: o.saleDate,
+        order_no: o.orderNo,
+        external_ref: o.ref,
+        external_status: o.status,
+        status: o.status,
+        commission: Math.round(commission * 100) / 100,
+        shipping_cost: Math.round(shipping * 100) / 100,
+        note: `${label} senkronu`,
+      })
       .select('id')
       .single()
     if (error) {

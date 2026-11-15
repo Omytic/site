@@ -9,7 +9,7 @@ import { defaultFrom, importOrders, type NormOrder, type SaleStatus, type SyncRe
  *  - Sınır: 0.0056 istek/sn, 20'lik ani hak. Bu yüzden zaman pencereleriyle ilerlenir;
  *    süre yetmezse `more: true` döner ve bir sonraki çalıştırma kaldığı yerden devam eder.
  *  - FBA (AMAZON) siparişleri Amazon FBA stoğundan, kendi kargonuz (MERCHANT) depodan düşer.
- *  - Komisyon bu API'de yok (Finance izni gerekir); satış komisyonsuz yazılır.
+ *  - Komisyon bu API'de yok (Finance izni gerekir); Stok → Kanal maliyetleri'ndeki % ve adet başı ücretle hesaplanır.
  */
 
 const TR_MARKETPLACE = 'A33AVAJ2PDY3EV'

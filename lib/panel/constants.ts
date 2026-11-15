@@ -147,6 +147,7 @@ export const TABLE_LABELS: Record<string, string> = {
   products: 'Vitrin ürünü',
   settings: 'Site ayarları',
   channel_listings: 'Pazaryeri eşleştirmesi',
+  channel_costs: 'Kanal maliyeti',
 }
 
 export const label = <T extends { id: string; label: string }>(list: readonly T[], id: string | null | undefined) =>

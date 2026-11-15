@@ -9,7 +9,7 @@ import { SHIPMENT_STATUS } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type ItemWithStock, type Shipment } from '@/lib/panel/data'
 import { daysBetween, dateTR, monthKey, num, tl, today } from '@/lib/panel/format'
 import { velocities } from '@/lib/panel/insights'
-import { emptyLine, LinesEditor, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
 import { Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
 
 const COLS = [
@@ -267,13 +267,14 @@ function ShipmentForm({ shipment, prefill, items, onClose }: { shipment: Shipmen
     received_date: shipment?.received_date ?? '',
     note: shipment?.note ?? '',
   })
-  const [lines, setLines] = useState<Line[]>(shipment?.shipment_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: '' })) ?? prefill ?? [emptyLine()])
+  const [rawLines, setLines] = useState<Line[]>(shipment?.shipment_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: '' })) ?? prefill ?? [emptyLine()])
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (lines.some((l) => !l.item_id || !(Number(l.qty) > 0))) return toast('Her satırda ürün ve miktar olmalı.', 'error')
+    const lines = realLines(rawLines)
+    if (!lines.length) return toast('En az bir ürün için adet girin.', 'error')
     setBusy(true)
     try {
       await write(
@@ -348,7 +349,7 @@ function ShipmentForm({ shipment, prefill, items, onClose }: { shipment: Shipmen
         </div>
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Gönderilen ürünler</p>
-          <LinesEditor items={items} lines={lines} setLines={setLines} noPrice stockFrom={() => 'depo'} />
+          <LinesEditor items={items} lines={rawLines} setLines={setLines} noPrice stockFrom={() => 'depo'} />
         </div>
         <Field label="Not">
           <Textarea value={f.note} onChange={(e) => set({ note: e.target.value })} />

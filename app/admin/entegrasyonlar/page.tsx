@@ -14,7 +14,7 @@ const RULES: [string, string][] = [
   ['Otomatik gelen siparişi elle tekrar giremezsiniz.', 'Aynı kanal ve sipariş numarasıyla ikinci kayıt engellenir; kimin, hangi tarihte girdiği uyarıda yazar.'],
   ['Düzenlemeleriniz ezilmez.', 'Otomatik gelen satışı düzenleyebilirsiniz. Senkron yalnızca pazaryerinde durum değişirse (iptal, iade) durumu günceller.'],
   ['Sildiğiniz geri gelmez.', 'Otomatik gelen bir satışı silerseniz stok geri eklenir ve o paket bir daha içe aktarılmaz.'],
-  ['Amazon’a özel:', 'FBA siparişleri Amazon FBA stoğundan, kendi kargonuzla gönderdikleriniz depodan düşer. Amazon komisyonu ve iadeler bu bağlantıyla gelmez; gerekirse elle girin.'],
+  ['Amazon’a özel:', 'FBA siparişleri Amazon FBA stoğundan, kendi kargonuzla gönderdikleriniz depodan düşer. Komisyon ve kargo Stok → Kanal maliyetleri’ndeki tanımdan otomatik hesaplanır; iadeler bu bağlantıyla gelmez, elle girilir.'],
   ['Kim ne yaptı görünür.', 'Satışlarda "Giren" sütunu kişiyi ya da "Otomatik · Amazon / Trendyol"u, son düzenleyeni de altında gösterir. Her değişiklik Düzenleme geçmişi’nde.'],
 ]
 
