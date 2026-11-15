@@ -24,13 +24,6 @@ export async function authorize(req: Request, db: SupabaseClient): Promise<{ ok:
   if (!token) return { ok: false, status: 401, message: 'Oturum gerekli' }
   const { data, error } = await db.auth.getUser(token)
   if (error || !data.user) return { ok: false, status: 401, message: 'Oturum geçersiz, tekrar giriş yapın' }
-  // İki adımlı doğrulama yapılmış oturum (aal2) şart
-  try {
-    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
-    if (claims.aal !== 'aal2') return { ok: false, status: 401, message: 'İki adımlı doğrulama gerekli, tekrar giriş yapın' }
-  } catch {
-    return { ok: false, status: 401, message: 'Oturum geçersiz, tekrar giriş yapın' }
-  }
   const { data: prof } = await db.from('profiles').select('id').eq('id', data.user.id).maybeSingle()
   if (!prof) return { ok: false, status: 403, message: 'Bu hesabın panele erişimi yok' }
   return { ok: true, userId: data.user.id }

@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ShieldCheck } from 'lucide-react'
+  X, Tag, Calculator } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -144,20 +144,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function AccountDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { me, profiles } = useAuth()
-  const { toast, confirm } = useUi()
-  const resetMfa = async (id: string, name: string) => {
-    if (!(await confirm(`${name} için iki adımlı doğrulama sıfırlansın mı?`, 'Bir sonraki girişinde yeni telefonuna QR okutması gerekecek. Bu işlem düzenleme geçmişine yazılır.', 'Sıfırla'))) return
-    try {
-      const { data } = await supabase.auth.getSession()
-      const res = await fetch('/api/admin/reset-mfa', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token}` }, body: JSON.stringify({ userId: id }) })
-      const body = await res.json()
-      if (!body.ok) throw new Error(body.message)
-      toast(`${name} için doğrulama sıfırlandı.`)
-    } catch (e: any) {
-      toast(e.message, 'error')
-    }
-  }
+  const { me } = useAuth()
+  const { toast } = useUi()
   const [name, setName] = useState(me.full_name)
   const [color, setColor] = useState(me.color)
   const [pw, setPw] = useState('')
@@ -205,7 +193,7 @@ function AccountDrawer({ open, onClose }: { open: boolean; onClose: () => void }
       <div className="space-y-4">
         <p className="rounded-xl bg-white p-4 text-sm text-ink-soft ring-1 ring-line">
           Kullanıcı adı: <b className="text-ink">{me.username}</b>
-          <span className="mt-1 block text-xs">İki adımlı doğrulama açık. 8 saat işlem yapılmazsa oturum kendiliğinden kapanır.</span>
+          <span className="mt-1 block text-xs">8 saat işlem yapılmazsa oturum kendiliğinden kapanır.</span>
         </p>
         <Field label="Görünen ad">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -224,27 +212,6 @@ function AccountDrawer({ open, onClose }: { open: boolean; onClose: () => void }
             ))}
           </div>
         </Field>
-        <div className="border-t border-line pt-4">
-          <p className="mb-1 flex items-center gap-2 text-sm font-bold text-ink">
-            <ShieldCheck className="h-4 w-4" /> Telefonunu kaybeden / değiştiren olursa
-          </p>
-          <p className="mb-3 text-xs text-ink-soft/70">Doğrulamasını sıfırlayın; bir sonraki girişinde yeni telefonuna QR okutur. Kişi kendi doğrulamasını sıfırlayamaz.</p>
-          <div className="space-y-2">
-            {profiles
-              .filter((p) => p.id !== me.id)
-              .map((p) => (
-                <div key={p.id} className="flex items-center justify-between rounded-xl bg-white px-3 py-2 ring-1 ring-line">
-                  <span className="flex items-center gap-2 text-sm font-semibold text-ink">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-                    {p.full_name}
-                  </span>
-                  <Button variant="secondary" size="sm" onClick={() => resetMfa(p.id, p.full_name)}>
-                    Doğrulamayı sıfırla
-                  </Button>
-                </div>
-              ))}
-          </div>
-        </div>
         <div className="border-t border-line pt-4">
           <p className="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
             <KeyRound className="h-4 w-4" /> Şifre değiştir

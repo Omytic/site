@@ -49,12 +49,7 @@ export function PanelAuth({ children, fallback }: { children: ReactNode; fallbac
         router.replace('/login?cikis=sure')
         return
       }
-      // İki adımlı doğrulama yapılmadan (ya da ilk şifre değiştirilmeden) panel açılmaz
-      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-      if (aal?.currentLevel !== 'aal2') {
-        router.replace('/login')
-        return
-      }
+      // İlk şifre değiştirilmeden panel açılmaz
       const { data: mine } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (mine && (mine as any).must_change_password) {
         router.replace('/login')

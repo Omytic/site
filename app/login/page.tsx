@@ -3,33 +3,20 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { AlertCircle, ArrowRight, Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertCircle, ArrowRight, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usernameToEmail } from '@/lib/panel/auth'
 import { markActivity, passwordProblem } from '@/lib/panel/security'
 
-// Supabase QR'ı "data:image/svg+xml;utf-8,<svg…>" olarak verir; bazı tarayıcılar ";utf-8" yazımını tanımaz.
-// SVG'yi çıkarıp standart biçimde (charset=utf-8, kodlanmış) yeniden veriyoruz.
-function qrSrc(raw: string) {
-  const i = raw.indexOf(',')
-  if (!raw.startsWith('data:image/svg+xml') || i < 0) return raw
-  let svg = raw.slice(i + 1)
-  try {
-    if (!svg.trimStart().startsWith('<')) svg = decodeURIComponent(svg)
-  } catch {}
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-}
-
-type Step = 'loading' | 'password' | 'enroll' | 'code' | 'newpass'
+type Step = 'loading' | 'password' | 'newpass'
 const GENERIC = 'Kullanıcı adı ya da şifre hatalı.'
 const inputCls =
   'h-12 w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 text-white outline-none transition placeholder:text-white/30 focus:border-thread/60 focus:bg-white/[0.08]'
 
 /*
- * Giriş üç adımlı:
+ * Giriş:
  *  1) kullanıcı adı + şifre
- *  2) iki adımlı doğrulama: ilk seferde telefondaki doğrulama uygulamasına QR okutulur, sonra her girişte 6 haneli kod
- *  3) ilk girişte herkes kendi güçlü şifresini belirler (ortak şifre bir kez kullanılır)
+ *  2) ilk girişte herkes kendi güçlü şifresini belirler (ortak şifre bir kez kullanılır)
  */
 function LoginForm() {
   const router = useRouter()
@@ -42,9 +29,6 @@ function LoginForm() {
   const [error, setError] = useState(
     params.get('yetki') === 'yok' ? GENERIC : params.get('cikis') === 'sure' ? 'Uzun süre işlem yapılmadığı için oturum kapandı. Tekrar giriş yapın.' : '',
   )
-  const [enroll, setEnroll] = useState<{ qr: string; secret: string } | null>(null)
-  const [factorId, setFactorId] = useState('')
-  const [code, setCode] = useState('')
   const [me, setMe] = useState<{ id: string; username: string } | null>(null)
   const [np, setNp] = useState('')
   const [np2, setNp2] = useState('')
@@ -53,25 +37,6 @@ function LoginForm() {
   const next = async () => {
     const { data: s } = await supabase.auth.getSession()
     if (!s.session) return setStep('password')
-    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    if (aal?.currentLevel !== 'aal2') {
-      const { data: f, error } = await supabase.auth.mfa.listFactors()
-      if (error) throw error
-      const verified = f.totp.find((x) => x.status === 'verified')
-      if (verified) {
-        setFactorId(verified.id)
-        setCode('')
-        return setStep('code')
-      }
-      // Yarım kalmış eski kurulumları temizle, yenisini başlat
-      for (const x of f.all.filter((x) => x.status !== 'verified')) await supabase.auth.mfa.unenroll({ factorId: x.id })
-      const { data: en, error: e2 } = await supabase.auth.mfa.enroll({ factorType: 'totp', issuer: 'OMY Panel', friendlyName: `OMY Panel ${new Date().toISOString().slice(0, 16)}` })
-      if (e2) throw e2
-      setEnroll({ qr: qrSrc(en.totp.qr_code), secret: en.totp.secret })
-      setFactorId(en.id)
-      setCode('')
-      return setStep('enroll')
-    }
     const uid = s.session.user.id
     const { data: prof, error: pe } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
     if (pe || !prof) {
@@ -93,7 +58,7 @@ function LoginForm() {
       await fn()
     } catch (e: any) {
       const m = String(e?.message ?? '')
-      setError(/invalid totp|invalid.*code|expired/i.test(m) ? 'Kod hatalı ya da süresi geçti. Uygulamadaki güncel kodu yazın.' : /rate|too many/i.test(m) ? 'Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin.' : m || 'Bir sorun oldu, tekrar deneyin.')
+      setError(/rate|too many/i.test(m) ? 'Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin.' : m || 'Bir sorun oldu, tekrar deneyin.')
     } finally {
       setLoading(false)
     }
@@ -113,14 +78,6 @@ function LoginForm() {
         return
       }
       setPassword('')
-      await next()
-    })
-  }
-  const submitCode = (e: React.FormEvent) => {
-    e.preventDefault()
-    run(async () => {
-      const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: code.replace(/\s/g, '') })
-      if (error) throw error
       await next()
     })
   }
@@ -170,53 +127,6 @@ function LoginForm() {
       <div className="flex h-40 items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-white/50" />
       </div>
-    )
-
-  if (step === 'enroll' && enroll)
-    return (
-      <form onSubmit={submitCode} className="space-y-4">
-        <div className="flex items-start gap-2.5">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-thread" />
-          <div>
-            <p className="font-bold">İki adımlı doğrulamayı kurun</p>
-            <p className="mt-1 text-sm text-white/60">
-              Telefonunuza <b className="text-white/80">Google Authenticator</b> (ya da Microsoft Authenticator) kurun, uygulamada <b className="text-white/80">+</b> → <b className="text-white/80">QR kodu tara</b> deyip aşağıdakini okutun. Bir kez yapılır.
-            </p>
-          </div>
-        </div>
-        <div className="mx-auto w-fit rounded-2xl bg-white p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={enroll.qr} alt="Doğrulama uygulaması için QR kod" className="h-44 w-44" />
-        </div>
-        <details className="text-center text-xs text-white/45">
-          <summary className="cursor-pointer hover:text-white/70">QR okutamıyorum, kodu elle gireceğim</summary>
-          <code className="mt-2 block select-all break-all rounded-lg bg-white/[0.06] px-3 py-2 font-mono text-[13px] tracking-wider text-white/80">{enroll.secret}</code>
-        </details>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-semibold text-white/70">Uygulamada çıkan 6 haneli kod</span>
-          <input autoFocus required inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} className={`${inputCls} text-center font-mono text-xl tracking-[0.4em]`} placeholder="••••••" />
-        </label>
-        {errBox}
-        {submitBtn('Doğrula ve devam et')}
-        {back}
-      </form>
-    )
-
-  if (step === 'code')
-    return (
-      <form onSubmit={submitCode} className="space-y-4">
-        <div className="flex items-start gap-2.5">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-thread" />
-          <div>
-            <p className="font-bold">Doğrulama kodu</p>
-            <p className="mt-1 text-sm text-white/60">Telefonunuzdaki doğrulama uygulamasında “OMY Panel” altındaki 6 haneli kodu yazın.</p>
-          </div>
-        </div>
-        <input autoFocus required inputMode="numeric" autoComplete="one-time-code" maxLength={7} value={code} onChange={(e) => setCode(e.target.value)} className={`${inputCls} text-center font-mono text-xl tracking-[0.4em]`} placeholder="••••••" aria-label="Doğrulama kodu" />
-        {errBox}
-        {submitBtn('Giriş yap')}
-        {back}
-      </form>
     )
 
   if (step === 'newpass')
