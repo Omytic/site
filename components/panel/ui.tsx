@@ -1,5 +1,6 @@
 'use client'
 
+import { createPortal } from 'react-dom'
 import {
   createContext,
   forwardRef,
@@ -285,7 +286,11 @@ export function Drawer({
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
   }, [open, onClose])
-  return (
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  if (!mounted) return null
+  // body'ye taşınır: form içinden açılan ikinci panel (ör. alımda "yeni kumaş") iç içe form olmasın
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label={title}>
@@ -308,7 +313,8 @@ export function Drawer({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

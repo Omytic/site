@@ -168,3 +168,22 @@ export const productImage = (sku: string | null | undefined) => {
   const hit = sku ? PRODUCT_IMAGES.find(([re]) => re.test(sku)) : undefined
   return hit ? `/panel/products/${hit[1]}.webp` : null
 }
+
+// Kumaşlar: ürün adına göre sitedeki kumaş fotoğrafı
+const FABRIC_IMAGES: [RegExp, string][] = [
+  [/alcantara/i, '/images/fabric-alcantara.webp'],
+  [/welsoft/i, '/images/fabric-welsoft.webp'],
+  [/air ?file/i, '/images/fabric-airfile.webp'],
+]
+const NAME_IMAGES: [RegExp, string][] = [
+  [/formstep.*m100|^m100$/i, '/panel/products/fs-m100.webp'],
+  [/formstep.*m300|^m300$/i, '/panel/products/fs-m300.webp'],
+  [/formstep.*m900|^m900$/i, '/panel/products/fs-m900.webp'],
+]
+/** Ürün fotoğrafı: önce SKU, sonra ürün adı (yeni eklenen numara/renk de modelin fotoğrafını alır). */
+export const itemImage = (i: { sku?: string | null; name: string; brand?: string; variant?: string | null }) => {
+  const bySku = productImage(i.sku)
+  if (bySku) return bySku
+  if (/seryn/i.test(i.name)) return /lansman/i.test(i.variant ?? '') ? '/panel/products/sr-18g-lansman.webp' : /10/.test(i.variant ?? '') ? '/panel/products/sr-10g.webp' : '/panel/products/sr-18g.webp'
+  return NAME_IMAGES.find(([re]) => re.test(i.name))?.[1] ?? FABRIC_IMAGES.find(([re]) => re.test(i.name))?.[1] ?? (i.brand === 'kumas' ? '/images/fabric-kumas.webp' : null)
+}

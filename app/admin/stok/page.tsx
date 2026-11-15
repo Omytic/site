@@ -10,6 +10,9 @@ import { addDays, dateTR, norm, num, pct, tl, today } from '@/lib/panel/format'
 import { coverDays, velocities } from '@/lib/panel/insights'
 import { HBars, ShareBar } from '@/components/panel/charts'
 import { ItemSelect, useOpenFromQuery } from '@/components/panel/forms'
+import { ItemForm } from '@/components/panel/ItemForm'
+import { CostsDrawer, NetProfit } from '@/components/panel/costs'
+import { useRouter } from 'next/navigation'
 import { Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
 
 type Tab = 'urunler' | 'hareketler'
@@ -24,7 +27,7 @@ export default function StockPage() {
   const [itemForm, setItemForm] = useState<ItemWithStock | 'new' | null>(null)
   const [adjust, setAdjust] = useState<ItemWithStock | 'new' | null>(null)
   const [count, setCount] = useState(false)
-  const [modelForm, setModelForm] = useState<Model | null>(null)
+  const router = useRouter()
   const [costsOpen, setCostsOpen] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const channelCosts = Q.channelCosts()
@@ -224,7 +227,7 @@ export default function StockPage() {
                         )}
                       </td>
                       <td className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" onClick={() => setModelForm(m)} title="Modeli düzenle: fiyat, maliyet, varyant ekle">
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/admin/urunler?model=${encodeURIComponent(m.key)}`)} title="Ürün sayfası: fiyat, maliyet, KDV, numara / renk ekle">
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </td>
@@ -254,7 +257,6 @@ export default function StockPage() {
       {itemForm && <ItemForm item={itemForm === 'new' ? null : itemForm} onClose={() => setItemForm(null)} />}
       {adjust && items && <AdjustForm items={items} preset={adjust === 'new' ? null : adjust} onClose={() => setAdjust(null)} />}
       {count && items && <CountSheet items={items} onClose={() => setCount(false)} />}
-      {modelForm && <ModelForm model={modelForm} onClose={() => setModelForm(null)} onAddVariant={() => setItemForm({ ...modelForm.items[0], id: '', sku: '', variant: '', color: modelForm.items[0].color } as ItemWithStock)} />}
       {costsOpen && items && <CostsDrawer items={items} costs={channelCosts.data ?? []} onClose={() => setCostsOpen(false)} />}
     </>
   )
@@ -417,171 +419,6 @@ function Movements({ items }: { items: ItemWithStock[] }) {
         <ShowMore shown={list.length} total={all.length} onMore={page.more} />
       </div>
     </Card>
-  )
-}
-
-function ItemForm({ item: given, onClose }: { item: ItemWithStock | null; onClose: () => void }) {
-  const { toast, confirm } = useUi()
-  // id'si boş gelen kayıt = mevcut modele yeni varyant (ad, marka, fiyat dolu gelir)
-  const item = given?.id ? given : null
-  const preset = given
-  const [f, setF] = useState({
-    name: preset?.name ?? '',
-    brand: (preset?.brand ?? 'kumas') as Brand,
-    variant: item?.variant ?? '',
-    color: preset?.color ?? '',
-    sku: item?.sku ?? '',
-    unit: preset?.unit ?? 'metre',
-    cost: preset ? String(preset.cost) : '',
-    price: preset ? String(preset.price) : '',
-    min_stock: preset ? String(preset.min_stock) : '',
-    active: item?.active ?? true,
-    notes: item?.notes ?? '',
-  })
-  const [busy, setBusy] = useState(false)
-  const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    // Yeni üründe "36-37, 37-38, 38-39" gibi virgülle yazılırsa her numara ayrı varyant açılır
-    const variants = item ? [f.variant.trim()] : f.variant.split(',').map((v) => v.trim()).filter(Boolean)
-    if (variants.length > 1) {
-      const rows = variants.map((v) => ({
-        name: f.name.trim(),
-        brand: f.brand,
-        variant: v,
-        color: f.color.trim() || null,
-        sku: f.sku.trim() ? `${f.sku.trim()}-${v.replace(/[^0-9A-Za-z]/g, '')}${f.color.trim() ? `-${f.color.trim().slice(0, 3).toUpperCase()}` : ''}` : null,
-        unit: f.unit,
-        cost: Number(f.cost) || 0,
-        price: Number(f.price) || 0,
-        min_stock: Number(f.min_stock) || 0,
-        active: f.active,
-        notes: f.notes || null,
-      }))
-      try {
-        await write(supabase.from('items').insert(rows))
-        invalidate(...AFTER.item)
-        toast(`${rows.length} varyant açıldı. Açılış stoğunu "Toplu sayım"dan girebilirsiniz.`)
-        onClose()
-      } catch (err: any) {
-        toast(err.message, 'error')
-      } finally {
-        setBusy(false)
-      }
-      return
-    }
-    const row = {
-      name: f.name.trim(),
-      brand: f.brand,
-      variant: f.variant.trim() || null,
-      color: f.color.trim() || null,
-      sku: f.sku.trim() || null,
-      unit: f.unit,
-      cost: Number(f.cost) || 0,
-      price: Number(f.price) || 0,
-      min_stock: Number(f.min_stock) || 0,
-      active: f.active,
-      notes: f.notes || null,
-    }
-    try {
-      await write(item ? supabase.from('items').update(row).eq('id', item.id) : supabase.from('items').insert(row))
-      invalidate(...AFTER.item)
-      toast(item ? 'Ürün güncellendi.' : 'Ürün eklendi. Açılış stoğunu "Toplu sayım"dan girebilirsiniz.')
-      onClose()
-    } catch (err: any) {
-      toast(err.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const del = async () => {
-    if (!item || !(await confirm('Ürün kartı silinsin mi?', 'Satış/alım kaydı olan ürünler silinemez; pasife alın.'))) return
-    try {
-      await write(supabase.from('items').delete().eq('id', item.id))
-      invalidate(...AFTER.item)
-      toast('Ürün silindi.')
-      onClose()
-    } catch (err: any) {
-      toast(err.message, 'error')
-    }
-  }
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      title={item ? 'Varyantı düzenle' : preset ? `${preset.name} · yeni varyant` : 'Yeni ürün kartı'}
-      footer={
-        <>
-          {item && (
-            <Button variant="ghost" className="mr-auto text-[#b83030]" onClick={del}>
-              Sil
-            </Button>
-          )}
-          <Button variant="secondary" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button form="item-form" type="submit" loading={busy}>
-            Kaydet
-          </Button>
-        </>
-      }
-    >
-      <form id="item-form" onSubmit={save} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Marka">
-            <Select value={f.brand} onChange={(e) => set({ brand: e.target.value as Brand, unit: e.target.value === 'kumas' ? 'metre' : 'adet' })}>
-              {BRANDS.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Birim">
-            <Select value={f.unit} onChange={(e) => set({ unit: e.target.value as any })}>
-              {UNITS.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-        <Field label="Ürün adı">
-          <Input required value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder={f.brand === 'kumas' ? 'Alcantara' : 'Ürün adı'} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={item ? 'Numara / varyant' : 'Numara / varyant'} hint={item ? 'Numara, gramaj, ebat…' : 'Birden çok numara için virgülle ayırın: 36-37, 37-38, 38-39'}>
-            <Input value={f.variant} onChange={(e) => set({ variant: e.target.value })} placeholder={f.brand === 'kumas' ? '150 cm' : '40-41'} />
-          </Field>
-          <Field label="Renk" hint="Varsa. Aynı model farklı renkte ayrı varyant olur.">
-            <Input value={f.color} onChange={(e) => set({ color: e.target.value })} placeholder={f.brand === 'kumas' ? 'Lacivert' : 'Siyah'} />
-          </Field>
-          <Field label="SKU / kod" hint={!item && f.variant.includes(',') ? 'Her numaraya sonuna numara eklenerek verilir.' : undefined}>
-            <Input value={f.sku} onChange={(e) => set({ sku: e.target.value })} />
-          </Field>
-          <Field label="Birim maliyet (₺)" hint="Alım girildikçe otomatik güncellenir.">
-            <Input type="number" min="0" step="any" value={f.cost} onChange={(e) => set({ cost: e.target.value })} />
-          </Field>
-          <Field label="Satış fiyatı (₺)">
-            <Input type="number" min="0" step="any" value={f.price} onChange={(e) => set({ price: e.target.value })} />
-          </Field>
-          <Field label="Kritik stok sınırı" hint="Bunun altına düşünce uyarı verir.">
-            <Input type="number" min="0" step="any" value={f.min_stock} onChange={(e) => set({ min_stock: e.target.value })} />
-          </Field>
-          <Field label="Durum">
-            <Select value={f.active ? '1' : '0'} onChange={(e) => set({ active: e.target.value === '1' })}>
-              <option value="1">Aktif</option>
-              <option value="0">Pasif (listelerde gizlenir)</option>
-            </Select>
-          </Field>
-        </div>
-        <Field label="Not">
-          <Textarea value={f.notes} onChange={(e) => set({ notes: e.target.value })} />
-        </Field>
-      </form>
-    </Drawer>
   )
 }
 
@@ -778,218 +615,3 @@ function CountSheet({ items, onClose }: { items: ItemWithStock[]; onClose: () =>
   )
 }
 
-const COST_CHANNELS = ['amazon', 'trendyol', 'hepsiburada', 'seryn_site'] as const
-const COST_HINTS: Record<string, string> = {
-  amazon: 'Amazon satış komisyonu % ve adet başı FBA gönderim ücreti. Seller Central’daki ücret önizlemesinden bakabilirsiniz.',
-  trendyol: 'Otomatik gelen Trendyol siparişlerinde komisyon Trendyol’dan gelir; buradaki % elle girilen satışlarda ve tahminde kullanılır.',
-  hepsiburada: 'Hepsiburada komisyonu % ve adet başı kargo.',
-  seryn_site: 'Ödeme altyapısı (PayTR vb.) kesintisi % ve adet başı kargo.',
-}
-
-/** Bir modelin satış kanalına göre adet başı net kârı. */
-function NetProfit({ model, costs, onSetup }: { model: Model; costs: ChannelCost[] | undefined; onSetup: () => void }) {
-  const i = model.items[0]
-  const rows = COST_CHANNELS.map((ch) => {
-    const c = costFor(costs, ch, model.name)
-    if (!c) return null
-    const fees = (i.price * Number(c.commission_pct)) / 100 + Number(c.fee_per_unit)
-    return { ch, fees, net: i.price - i.cost - fees }
-  }).filter(Boolean) as { ch: string; fees: number; net: number }[]
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-soft">
-      <span className="font-bold text-ink">Adet başı net kâr</span>
-      {rows.length === 0 ? (
-        <span>
-          Komisyon ve kargo tanımlı değil.{' '}
-          <button type="button" className="font-semibold text-ink underline" onClick={onSetup}>
-            Kanal maliyetlerini gir
-          </button>
-        </span>
-      ) : (
-        rows.map((r) => (
-          <span key={r.ch} title={`${tl(i.price)} satış − ${tl(i.cost)} maliyet − ${tl(r.fees)} komisyon/kargo`}>
-            {label(CHANNELS, r.ch)}{' '}
-            <b className={cx('tabular-nums', r.net < 0 ? 'text-[#b83030]' : 'text-ink')}>{tl(r.net)}</b>
-            <span className="text-ink-soft/50"> (−{tl(r.fees)} gider)</span>
-          </span>
-        ))
-      )}
-      {!i.cost && <span className="text-[#b07a00]">Maliyet girilmemiş, kâr fazla görünür.</span>}
-    </div>
-  )
-}
-
-/** Modeldeki bütün numaralara aynı fiyat / maliyet / kritik sınır. */
-function ModelForm({ model, onClose, onAddVariant }: { model: Model; onClose: () => void; onAddVariant: () => void }) {
-  const { toast } = useUi()
-  const first = model.items[0]
-  const same = (k: 'price' | 'cost' | 'min_stock') => (model.items.every((i) => i[k] === first[k]) ? String(first[k]) : '')
-  const [f, setF] = useState({ name: first.name, price: same('price'), cost: same('cost'), min_stock: same('min_stock') })
-  const [busy, setBusy] = useState(false)
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const patch: Record<string, unknown> = {}
-    if (f.name.trim() && f.name.trim() !== first.name) patch.name = f.name.trim()
-    if (f.price !== '') patch.price = Number(f.price) || 0
-    if (f.cost !== '') patch.cost = Number(f.cost) || 0
-    if (f.min_stock !== '') patch.min_stock = Number(f.min_stock) || 0
-    if (!Object.keys(patch).length) return onClose()
-    setBusy(true)
-    try {
-      await write(supabase.from('items').update(patch).in('id', model.items.map((i) => i.id)))
-      invalidate(...AFTER.item)
-      toast(`${model.items.length} varyant güncellendi.`)
-      onClose()
-    } catch (err: any) {
-      toast(err.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      title={`${model.name} · model`}
-      footer={
-        <>
-          <Button variant="secondary" className="mr-auto" icon={<Plus className="h-4 w-4" />} onClick={onAddVariant}>
-            Numara / renk ekle
-          </Button>
-          <Button variant="secondary" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button form="model-form" type="submit" loading={busy}>
-            Hepsine uygula
-          </Button>
-        </>
-      }
-    >
-      <form id="model-form" onSubmit={save} className="space-y-4">
-        <p className="rounded-xl bg-[#F7F6F2] p-3 text-sm text-ink-soft">
-          Buraya yazdığınız değer bu modelin <b className="text-ink">{model.items.length} varyantının</b> hepsine yazılır. Boş bıraktığınız alan değişmez. Tek bir numarayı ayrı düzenlemek için listede o numaranın kalemine basın.
-        </p>
-        <Field label="Model adı" hint="Değiştirirseniz bütün varyantların adı değişir.">
-          <Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Satış fiyatı (₺)" hint={same('price') ? undefined : 'Varyantlarda farklı fiyat var.'}>
-            <Input type="number" min="0" step="any" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} placeholder="karışık" />
-          </Field>
-          <Field label="Birim maliyet (₺)" hint={same('cost') ? undefined : 'Varyantlarda farklı maliyet var.'}>
-            <Input type="number" min="0" step="any" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} placeholder="karışık" />
-          </Field>
-          <Field label="Kritik stok sınırı (her varyant için)">
-            <Input type="number" min="0" step="any" value={f.min_stock} onChange={(e) => setF({ ...f, min_stock: e.target.value })} placeholder="karışık" />
-          </Field>
-        </div>
-        <div>
-          <p className="mb-2 text-sm font-bold text-ink">Varyantlar</p>
-          <div className="flex flex-wrap gap-1.5">
-            {model.items.map((i) => (
-              <span key={i.id} className={cx('rounded-lg bg-[#F4F3EF] px-2.5 py-1 text-xs font-semibold', !i.active && 'opacity-50')}>
-                {variantLabel(i) || '—'} · <span className="tabular-nums">{num(i.total)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      </form>
-    </Drawer>
-  )
-}
-
-/** Kanal başına (ve isteğe bağlı model başına) komisyon % ve adet başı kargo / FBA ücreti. */
-function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[]; costs: ChannelCost[]; onClose: () => void }) {
-  const { toast } = useUi()
-  const models = groupModels(items.filter((i) => i.active))
-  const keyOf = (ch: string, model: string | null) => `${ch}|${model ?? ''}`
-  const initial = () => {
-    const m: Record<string, { pct: string; fee: string }> = {}
-    costs.forEach((c) => (m[keyOf(c.channel, c.model)] = { pct: String(Number(c.commission_pct)), fee: String(Number(c.fee_per_unit)) }))
-    return m
-  }
-  const [v, setV] = useState(initial)
-  const [ch, setCh] = useState<(typeof COST_CHANNELS)[number]>('amazon')
-  const [busy, setBusy] = useState(false)
-  const val = (model: string | null) => v[keyOf(ch, model)] ?? { pct: '', fee: '' }
-  const put = (model: string | null, p: Partial<{ pct: string; fee: string }>) => setV((x) => ({ ...x, [keyOf(ch, model)]: { ...val(model), ...p } }))
-
-  const save = async () => {
-    setBusy(true)
-    try {
-      for (const [k, x] of Object.entries(v)) {
-        const [channel, m] = k.split('|')
-        const model = m || null
-        const ex = costs.find((c) => c.channel === channel && (c.model ?? '') === (model ?? ''))
-        const empty = x.pct === '' && x.fee === ''
-        if (empty) {
-          if (ex) await write(supabase.from('channel_costs').delete().eq('id', ex.id))
-          continue
-        }
-        const row = { channel, model, commission_pct: Number(x.pct) || 0, fee_per_unit: Number(x.fee) || 0 }
-        if (ex) {
-          if (Number(ex.commission_pct) !== row.commission_pct || Number(ex.fee_per_unit) !== row.fee_per_unit) await write(supabase.from('channel_costs').update(row).eq('id', ex.id))
-        } else await write(supabase.from('channel_costs').insert(row))
-      }
-      invalidate(...AFTER.costs)
-      toast('Kanal maliyetleri kaydedildi. Yeni satışlarda komisyon ve kargo otomatik hesaplanır.')
-      onClose()
-    } catch (err: any) {
-      toast(err.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const general = val(null)
-  return (
-    <Drawer
-      open
-      wide
-      onClose={onClose}
-      title="Kanal maliyetleri"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Vazgeç
-          </Button>
-          <Button onClick={save} loading={busy}>
-            Kaydet
-          </Button>
-        </>
-      }
-    >
-      <p className="mb-4 text-sm text-ink-soft">
-        Her kanal için bir kez girin: satış girerken ve pazaryeri senkronunda komisyon ile kargo otomatik hesaplanır, Stok’taki tahmini kâr ve adet başı net kâr da bundan çıkar. Modele özel değer girmezseniz “Bütün ürünler” satırı kullanılır.
-      </p>
-      <Segmented value={ch} onChange={setCh} size="sm" options={COST_CHANNELS.map((c) => ({ id: c, label: label(CHANNELS, c) }))} />
-      <p className="mt-3 text-xs text-ink-soft/70">{COST_HINTS[ch]}</p>
-      <div className="mt-3 overflow-hidden rounded-2xl ring-1 ring-line">
-        <div className="grid grid-cols-[1fr_96px_112px_100px] items-center gap-2 bg-[#F7F6F2] px-3 py-2 text-xs font-semibold text-ink-soft/70">
-          <span>Ürün</span>
-          <span>Komisyon %</span>
-          <span>{ch === 'amazon' ? 'FBA/kargo ₺/adet' : 'Kargo ₺/adet'}</span>
-          <span className="text-right">Net kâr/adet</span>
-        </div>
-        {[null, ...models].map((m) => {
-          const name = m ? m.name : null
-          const x = val(name)
-          const eff = x.pct !== '' || x.fee !== '' ? x : name ? general : x
-          const i = m?.items[0]
-          const net = i && (eff.pct !== '' || eff.fee !== '') ? i.price - i.cost - (i.price * (Number(eff.pct) || 0)) / 100 - (Number(eff.fee) || 0) : null
-          return (
-            <div key={name ?? 'all'} className={cx('grid grid-cols-[1fr_96px_112px_100px] items-center gap-2 border-t border-line px-3 py-2', !m && 'bg-[#FBFAF7]')}>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">{m ? m.name : 'Bütün ürünler'}</p>
-                {m && <p className="text-xs text-ink-soft/50">{tl(m.items[0].price, true)} satış · {m.items[0].cost ? tl(m.items[0].cost, true) : 'maliyet yok'}</p>}
-              </div>
-              <Input type="number" min="0" max="99" step="any" className="h-9" value={x.pct} placeholder={m && general.pct !== '' ? general.pct : '0'} onChange={(e) => put(name, { pct: e.target.value })} />
-              <Input type="number" min="0" step="any" className="h-9" value={x.fee} placeholder={m && general.fee !== '' ? general.fee : '0'} onChange={(e) => put(name, { fee: e.target.value })} />
-              <span className={cx('text-right text-sm font-bold tabular-nums', net !== null && net < 0 ? 'text-[#b83030]' : 'text-ink')}>{net === null ? '—' : tl(net, true)}</span>
-            </div>
-          )
-        })}
-      </div>
-    </Drawer>
-  )
-}

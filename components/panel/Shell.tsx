@@ -22,8 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X,
-} from 'lucide-react'
+  X, Tag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -37,6 +36,7 @@ const NAV: { group: string; items: { href: string; label: string; icon: typeof B
       { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
       { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
       { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+      { href: '/admin/urunler', label: 'Ürünler', icon: Tag },
       { href: '/admin/stok', label: 'Stok', icon: Boxes },
     ],
   },

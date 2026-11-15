@@ -196,6 +196,8 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
   const total = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) + (Number(f.shipping_cost) || 0)
+  // Ürün kartındaki KDV oranıyla (maliyetler KDV hariç tutulur)
+  const vat = rawLines.reduce((a, l) => a + ((Number(l.qty) || 0) * (Number(l.price) || 0) * Number(items.find((i) => i.id === l.item_id)?.vat_rate ?? 20)) / 100, 0)
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -237,6 +239,7 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
         <>
           <p className="mr-auto text-sm text-ink-soft">
             Toplam <b className="font-display text-lg font-black text-ink">{tl(total)}</b>
+            {vat > 0 && <span className="ml-2 text-xs">+ {tl(vat)} KDV = <b className="text-ink">{tl(total + vat)}</b></span>}
           </p>
           <Button variant="secondary" onClick={onClose}>
             Vazgeç
@@ -264,7 +267,7 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
         </div>
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Gelen ürünler</p>
-          <LinesEditor items={items} lines={rawLines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation />
+          <LinesEditor items={items} lines={rawLines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation priceFromCard allowNew />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Ödeme">

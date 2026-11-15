@@ -10,7 +10,7 @@ import type { Brand, BrandOrGenel, Channel, LocationId, Unit } from './constants
 export interface Profile { id: string; username: string; full_name: string; color: string }
 export interface Item {
   id: string; sku: string | null; name: string; brand: Brand; variant: string | null; color?: string | null; unit: Unit
-  cost: number; price: number; min_stock: number; active: boolean; notes: string | null; created_at: string
+  vat_rate?: number; cost: number; price: number; min_stock: number; active: boolean; notes: string | null; created_at: string
 }
 export interface StockLevel { item_id: string; location_id: LocationId; qty: number }
 export interface SaleItem { id?: string; item_id: string; qty: number; unit_price: number; unit_cost?: number | null; location_id?: LocationId }
@@ -339,7 +339,7 @@ export function useItemsWithStock() {
           stock.data!.forEach((l) => {
             if (l.item_id === i.id) s[l.location_id] = Number(l.qty)
           })
-          return { ...i, cost: Number(i.cost), price: Number(i.price), min_stock: Number(i.min_stock), stock: s, total: s.depo + s.yolda + s.amazon, label: itemLabel(i) }
+          return { ...i, cost: Number(i.cost), vat_rate: Number(i.vat_rate ?? 20), price: Number(i.price), min_stock: Number(i.min_stock), stock: s, total: s.depo + s.yolda + s.amazon, label: itemLabel(i) }
         })
       : undefined
   return { data: list, loading: items.loading || stock.loading, error: items.error || stock.error }
@@ -392,4 +392,55 @@ export function estimateStock(items: ItemWithStock[], lines: SaleLine[], costs: 
     }
   })
   return { retail, cost, fees, profit: retail - cost - fees, coverage: units ? covered / units : 0 }
+}
+
+/** Yeni numara/renk için SKU: modeldeki SKU'ların ön ekinden (FS-M900-4647-LAC gibi). */
+export function nextSku(model: Model, variant: string, color: string) {
+  const pref = model.items.map((i) => i.sku?.match(/^(.*)-[^-]+(?:-[A-ZÇĞİÖŞÜ]{3})?$/)?.[1]).find(Boolean)
+  if (!pref) return null
+  const v = variant.replace(/[^0-9A-Za-z]/g, '')
+  const c = color ? `-${color.trim().toLocaleUpperCase('tr').replace(/[^A-ZÇĞİÖŞÜ]/g, '').slice(0, 3)}` : ''
+  let sku = `${pref}-${v || 'X'}${c}`
+  const taken = new Set(model.items.map((i) => i.sku))
+  for (let k = 2; taken.has(sku); k++) sku = `${pref}-${v || 'X'}${c}-${k}`
+  return sku
+}
+
+/** Modele yeni numara(lar) ve/veya renk ekler: ad, marka, birim, fiyat, maliyet, KDV, kritik sınır modelden gelir. */
+export async function addVariants(model: Model, variants: string[], colors: string[]) {
+  const base = model.items[0]
+  const vs = variants.length ? variants : [null]
+  const cs = colors.length ? Array.from(new Set(colors.map((c) => c.trim() || null))) : [null]
+  const exists = (v: string | null, c: string | null) =>
+    model.items.some((i) => (i.variant ?? '').trim().toLocaleLowerCase('tr') === (v ?? '').trim().toLocaleLowerCase('tr') && (i.color ?? '').trim().toLocaleLowerCase('tr') === (c ?? '').trim().toLocaleLowerCase('tr'))
+  const rows = vs.flatMap((v) =>
+    cs
+      .filter((c) => !exists(v, c))
+      .map((c) => ({
+        name: base.name,
+        brand: base.brand,
+        unit: base.unit,
+        variant: v,
+        color: c,
+        sku: nextSku(model, v ?? '', c ?? ''),
+        cost: base.cost,
+        vat_rate: base.vat_rate ?? 20,
+        price: base.price,
+        min_stock: base.min_stock,
+        active: true,
+      })),
+  )
+  // aynı istekte aynı SKU iki kez üretilmesin
+  const seen = new Set<string>()
+  rows.forEach((r) => {
+    if (!r.sku) return
+    let s = r.sku
+    for (let k = 2; seen.has(s); k++) s = `${r.sku}-${k}`
+    seen.add(s)
+    r.sku = s
+  })
+  if (!rows.length) return []
+  const made = await write<{ id: string }[]>(supabase.from('items').insert(rows).select('id'))
+  invalidate(...AFTER.item)
+  return (made ?? []).map((r) => r.id)
 }
