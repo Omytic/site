@@ -14,7 +14,8 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(params.get('yetki') === 'yok' ? 'Bu hesabın panele erişimi yok.' : '')
+  // Hata mesajları bilerek genel: hangi kullanıcı adının var olduğu belli olmasın
+  const [error, setError] = useState(params.get('yetki') === 'yok' ? 'Kullanıcı adı ya da şifre hatalı.' : '')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -29,7 +30,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithPassword({ email: usernameToEmail(username), password })
     if (error) {
       setLoading(false)
-      setError(error.message.includes('Invalid login') ? 'Kullanıcı adı ya da şifre hatalı.' : 'Giriş yapılamadı. Biraz sonra tekrar deneyin.')
+      setError(/rate|too many/i.test(error.message) ? 'Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin.' : 'Kullanıcı adı ya da şifre hatalı.')
       return
     }
     router.replace('/admin')
@@ -46,7 +47,6 @@ function LoginForm() {
           autoCapitalize="none"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="yunus, yusuf ya da omer"
           className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 text-white outline-none transition placeholder:text-white/30 focus:border-thread/60 focus:bg-white/[0.08]"
         />
       </label>
@@ -104,7 +104,7 @@ export default function LoginPage() {
             <span className="font-display text-5xl font-black tracking-[-0.04em]">OMY</span>
             <span className="h-2.5 w-2.5 rounded-full bg-thread" />
           </span>
-          <p className="mt-2 text-white/55">Stok, satış ve finans paneli</p>
+          <p className="mt-2 text-white/55">Yönetim paneli</p>
         </div>
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-xl sm:p-7">
           <Suspense>
