@@ -58,21 +58,24 @@ export const Button = forwardRef<
 /* ------------------------------------------------------------------ */
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0 max-w-2xl">
-        <h1 className="font-display text-3xl font-black tracking-tight text-ink sm:text-4xl">{title}</h1>
-        {subtitle && <p className="mt-1.5 text-[15px] text-ink-soft/70">{subtitle}</p>}
+        <h1 className="font-display text-[28px] font-black leading-tight tracking-tight text-ink sm:text-4xl">{title}</h1>
+        {subtitle && <p className="mt-1.5 text-sm text-ink-soft/70 sm:text-[15px]">{subtitle}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && (
+        // Telefonda düğmeler tek sıra, yana kaydırılır
+        <div className="-mx-4 flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&>*]:shrink-0">{actions}</div>
+      )}
     </div>
   )
 }
 
 export function Card({ children, className, title, action, pad = true }: { children: ReactNode; className?: string; title?: ReactNode; action?: ReactNode; pad?: boolean }) {
   return (
-    <section className={cx('rounded-2xl bg-white ring-1 ring-black/[0.06] shadow-[0_1px_2px_rgba(14,21,39,0.04)]', className)}>
+    <section className={cx('min-w-0 rounded-2xl bg-white ring-1 ring-black/[0.06] shadow-[0_1px_2px_rgba(14,21,39,0.04)]', className)}>
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 px-5 pt-4">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-5 pt-4">
           {title && <h2 className="text-[15px] font-bold text-ink">{title}</h2>}
           {action}
         </header>
@@ -341,7 +344,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   return (
     <UiCtx.Provider value={{ toast, confirm }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2">
+      <div className="pointer-events-none fixed bottom-20 right-4 z-[100] lg:bottom-4 flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2">
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div
@@ -395,7 +398,7 @@ export function Table({ head, children, className }: { head: ReactNode; children
   return (
     <div className={cx('overflow-x-auto', className)}>
       <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
-        <thead className="text-left text-xs font-semibold text-ink-soft/60 [&_th]:border-b [&_th]:border-line [&_th]:px-4 [&_th]:py-2.5 [&_th]:font-semibold">
+        <thead className="text-left text-xs font-semibold text-ink-soft/60 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-line [&_th]:bg-white [&_th]:px-4 [&_th]:py-2.5 [&_th]:font-semibold">
           {head}
         </thead>
         <tbody className="[&_td]:border-b [&_td]:border-black/[0.04] [&_td]:px-4 [&_td]:py-3 [&_tr:last-child_td]:border-0 [&_tr]:transition-colors hover:[&_tr]:bg-[#FAF9F6]">

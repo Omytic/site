@@ -28,17 +28,22 @@ import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
 import { Button, cx, Drawer, Field, Input, useUi } from './ui'
 
-const NAV: { group: string; items: { href: string; label: string; icon: typeof Boxes }[] }[] = [
-  { group: '', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard }] },
+const NAV: { group: string; items: { href: string; label: string; icon: typeof Boxes; short?: string }[] }[] = [
+  { group: '', items: [{ href: '/admin', label: 'Genel bakış', icon: LayoutDashboard, short: 'Özet' }] },
   {
     group: 'Ticaret',
     items: [
       { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
       { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
       { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+    ],
+  },
+  {
+    group: 'Ürün ve stok',
+    items: [
       { href: '/admin/urunler', label: 'Ürünler', icon: Tag },
-      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator },
       { href: '/admin/stok', label: 'Stok', icon: Boxes },
+      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator },
     ],
   },
   {
@@ -64,6 +69,17 @@ const NAV: { group: string; items: { href: string; label: string; icon: typeof B
     ],
   },
 ]
+const ALL_NAV = NAV.flatMap((g) => g.items.map((it) => ({ ...it, group: g.group })))
+const findNav = (path: string | null) =>
+  [...ALL_NAV].sort((a, b) => b.href.length - a.href.length).find((it) => (it.href === '/admin' ? path === '/admin' : path?.startsWith(it.href)))
+
+// Telefonda alttaki sekme çubuğu
+const TABS = [
+  { href: '/admin', label: 'Özet', icon: LayoutDashboard },
+  { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
+  { href: '/admin/urunler', label: 'Ürünler', icon: Tag },
+  { href: '/admin/stok', label: 'Stok', icon: Boxes },
+]
 
 const QUICK = [
   { href: '/admin/satislar?yeni=1', label: 'Satış', icon: ShoppingBag },
@@ -88,10 +104,10 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname()
   const isActive = (href: string) => (href === '/admin' ? path === '/admin' : path?.startsWith(href))
   return (
-    <nav className="space-y-5">
+    <nav className="space-y-4">
       {NAV.map((g) => (
         <div key={g.group || 'root'}>
-          {g.group && <p className="mb-1.5 px-3 text-[11px] font-bold text-white/35">{g.group}</p>}
+          {g.group && <p className="mb-1 px-3 text-[10.5px] font-bold uppercase tracking-[0.08em] text-white/30">{g.group}</p>}
           <ul className="space-y-0.5">
             {g.items.map((it) => {
               const active = isActive(it.href)
@@ -101,7 +117,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                     href={it.href}
                     onClick={onNavigate}
                     className={cx(
-                      'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors',
+                      'relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13.5px] font-semibold transition-colors',
                       active ? 'text-white' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
                     )}
                   >
@@ -257,39 +273,38 @@ export default function Shell({ children }: { children: ReactNode }) {
   useEffect(() => setMobile(false), [path])
 
   const userCard = (
-    <div className="rounded-2xl bg-white/[0.04] p-3 ring-1 ring-white/[0.06]">
-      <button onClick={() => setAccount(true)} className="flex w-full items-center gap-3 rounded-xl text-left">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black text-night" style={{ backgroundColor: me.color }}>
+    <div className="flex items-center gap-2 rounded-2xl bg-white/[0.04] p-2 ring-1 ring-white/[0.06]">
+      <button onClick={() => setAccount(true)} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-1 text-left hover:bg-white/[0.04]" title="Hesabım: ad, renk, şifre">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black text-night" style={{ backgroundColor: me.color }}>
           {me.full_name.slice(0, 1)}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-bold text-white">{me.full_name}</span>
-          <span className="block text-xs text-white/45">Hesabım</span>
+          <span className="block text-[11px] text-white/45">Hesabım</span>
         </span>
       </button>
-      <div className="mt-3 flex gap-1.5">
-        <a href="/" target="_blank" className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-xs font-semibold text-white/70 hover:text-white">
-          <ExternalLink className="h-3.5 w-3.5" /> Site
-        </a>
-        <button onClick={signOut} className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white/[0.06] text-xs font-semibold text-white/70 hover:text-white">
-          <LogOut className="h-3.5 w-3.5" /> Çıkış
-        </button>
-      </div>
+      <a href="/" target="_blank" className="flex h-8 w-8 items-center justify-center rounded-lg text-white/55 hover:bg-white/[0.06] hover:text-white" title="Siteyi aç" aria-label="Siteyi aç">
+        <ExternalLink className="h-4 w-4" />
+      </a>
+      <button onClick={signOut} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/55 hover:bg-white/[0.06] hover:text-white" title="Çıkış" aria-label="Çıkış">
+        <LogOut className="h-4 w-4" />
+      </button>
     </div>
   )
+  const current = findNav(path)
 
   return (
     <div className="min-h-screen bg-[#F4F3EF] font-sans text-ink">
       {/* Masaüstü yan menü */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-hidden bg-night px-4 pb-4 pt-6 lg:flex">
         <div aria-hidden className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-thread/15 blur-[80px]" />
-        <Link href="/admin" className="relative mb-8 px-3">
+        <Link href="/admin" className="relative mb-6 px-3">
           <Mark />
         </Link>
-        <div className="relative flex-1 overflow-y-auto pr-1">
+        <div className="relative -mr-2 flex-1 overflow-y-auto pr-2 [scrollbar-width:thin]">
           <NavList />
         </div>
-        <div className="relative mt-4">{userCard}</div>
+        <div className="relative mt-3 border-t border-white/[0.06] pt-3">{userCard}</div>
       </aside>
 
       {/* Mobil */}
@@ -325,9 +340,19 @@ export default function Shell({ children }: { children: ReactNode }) {
             <button onClick={() => setMobile(true)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-line lg:hidden" aria-label="Menüyü aç">
               <Menu className="h-5 w-5" />
             </button>
-            <p className="hidden text-sm text-ink-soft/70 sm:block">
-              Merhaba <b className="text-ink">{me.full_name}</b>, {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
+            {current && current.href !== '/admin' ? (
+              <p className="flex min-w-0 items-center gap-2 text-sm">
+                {current.group && <span className="hidden text-ink-soft/50 sm:inline">{current.group}</span>}
+                {current.group && <span className="hidden text-ink-soft/30 sm:inline">/</span>}
+                <current.icon className="h-4 w-4 shrink-0 text-ink-soft/60" />
+                <b className="truncate text-ink">{current.label}</b>
+              </p>
+            ) : (
+              <p className="truncate text-sm text-ink-soft/70">
+                Merhaba <b className="text-ink">{me.full_name}</b>
+                <span className="hidden sm:inline">, {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => invalidate()} title="Verileri yenile">
@@ -336,8 +361,31 @@ export default function Shell({ children }: { children: ReactNode }) {
             <QuickAdd />
           </div>
         </header>
-        <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
       </div>
+
+      {/* Telefonda alt sekme çubuğu */}
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.06] bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Ana sayfalar">
+        <ul className="mx-auto grid max-w-md grid-cols-5">
+          {TABS.map((t) => {
+            const active = t.href === '/admin' ? path === '/admin' : path?.startsWith(t.href)
+            return (
+              <li key={t.href}>
+                <Link href={t.href} className={cx('flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold', active ? 'text-ink' : 'text-ink-soft/50')}>
+                  <t.icon className={cx('h-5 w-5', active && 'text-[#c98f1f]')} />
+                  {t.label}
+                </Link>
+              </li>
+            )
+          })}
+          <li>
+            <button onClick={() => setMobile(true)} className="flex w-full flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold text-ink-soft/50">
+              <Menu className="h-5 w-5" />
+              Menü
+            </button>
+          </li>
+        </ul>
+      </nav>
       <AccountDrawer open={account} onClose={() => setAccount(false)} />
     </div>
   )

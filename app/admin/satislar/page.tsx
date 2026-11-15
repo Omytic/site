@@ -154,10 +154,10 @@ export default function SalesPage() {
               return (
                 <tr key={s.id}>
                   <td className="whitespace-nowrap text-ink-soft">{dateTR(s.sale_date)}</td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <Badge color={colorOf(CHANNELS, s.channel)}>{label(CHANNELS, s.channel)}</Badge>
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <p className="font-semibold text-ink">{s.order_no || '—'}</p>
                     {s.customer && <p className="text-xs text-ink-soft/60">{s.customer}</p>}
                   </td>
@@ -179,7 +179,7 @@ export default function SalesPage() {
                   </td>
                   <td className="text-right font-bold tabular-nums">{tl(total)}</td>
                   <td className="text-right tabular-nums text-ink-soft">{tl(net)}</td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <div className="flex flex-col items-start gap-1">
                       <StatusPill tone={s.status === 'tamamlandi' ? 'good' : s.status === 'iade' ? 'warning' : 'neutral'}>{label(SALE_STATUS, s.status)}</StatusPill>
                       {s.payment_status === 'bekliyor' && <StatusPill tone="info">Tahsilat bekliyor</StatusPill>}
