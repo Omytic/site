@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { Profile } from './data'
+import { clearActivity, idleTooLong, markActivity } from './security'
 
 interface AuthState {
   me: Profile
@@ -41,6 +42,25 @@ export function PanelAuth({ children, fallback }: { children: ReactNode; fallbac
         router.replace('/login')
         return
       }
+      // Uzun süre hareketsiz kalmış oturum kapanır
+      if (idleTooLong()) {
+        await supabase.auth.signOut()
+        clearActivity()
+        router.replace('/login?cikis=sure')
+        return
+      }
+      // İki adımlı doğrulama yapılmadan (ya da ilk şifre değiştirilmeden) panel açılmaz
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal?.currentLevel !== 'aal2') {
+        router.replace('/login')
+        return
+      }
+      const { data: mine } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (mine && (mine as any).must_change_password) {
+        router.replace('/login')
+        return
+      }
+      markActivity()
       const { data: profiles, error } = await supabase.from('profiles').select('id,username,full_name,color').order('username')
       if (!alive) return
       if (error) {
@@ -59,9 +79,28 @@ export function PanelAuth({ children, fallback }: { children: ReactNode; fallbac
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') router.replace('/login')
     })
+    // Hareket oldukça zamanı güncelle; her dakika kontrol et
+    let last = 0
+    const onAct = () => {
+      if (Date.now() - last > 60_000) {
+        last = Date.now()
+        markActivity()
+      }
+    }
+    const evs = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
+    evs.forEach((e) => window.addEventListener(e, onAct, { passive: true }))
+    const timer = setInterval(async () => {
+      if (idleTooLong()) {
+        await supabase.auth.signOut()
+        clearActivity()
+        router.replace('/login?cikis=sure')
+      }
+    }, 60_000)
     return () => {
       alive = false
       sub.subscription.unsubscribe()
+      evs.forEach((e) => window.removeEventListener(e, onAct))
+      clearInterval(timer)
     }
   }, [router])
 
@@ -71,6 +110,7 @@ export function PanelAuth({ children, fallback }: { children: ReactNode; fallbac
         ...state,
         byId: (id) => state.profiles.find((p) => p.id === id),
         signOut: async () => {
+          clearActivity()
           await supabase.auth.signOut()
           router.replace('/login')
         },
