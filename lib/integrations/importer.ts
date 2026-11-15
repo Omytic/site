@@ -158,9 +158,10 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
       return
     }
     // Pazaryeri komisyonu vermiyorsa (Amazon) kanal maliyetindeki %; kargo / FBA ücreti adet başı tanımdan
-    let commission = o.commission ?? 0
+    // Komisyon faturası KDV dahil yazılır: pazaryerleri oranı KDV hariç verir, faturaya %20 KDV eklenir
+    let commission = (o.commission ?? 0) * 1.2
     let shipping = 0
-    if (!(commission > 0)) commission = lines.reduce((a, { l, item }) => a + (l.qty * l.unitPrice * Number(costOf(item!)?.commission_pct ?? 0)) / 100, 0)
+    if (!(commission > 0)) commission = lines.reduce((a, { l, item }) => a + (l.qty * l.unitPrice * Number(costOf(item!)?.commission_pct ?? 0) * 1.2) / 100, 0)
     shipping = lines.reduce((a, { l, item }) => a + l.qty * Number(costOf(item!)?.fee_per_unit ?? 0), 0)
     const { data: sale, error } = await db
       .from('sales')

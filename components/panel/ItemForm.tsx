@@ -180,7 +180,10 @@ export function ItemForm({
               ))}
             </Select>
           </Field>
-          <Field label="Satış fiyatı (₺)">
+          <Field
+            label="Satış fiyatı, KDV dahil (₺)"
+            hint={Number(f.price) > 0 ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))}` : undefined}
+          >
             <Input type="number" min="0" step="any" value={f.price} onChange={(e) => set({ price: e.target.value })} />
           </Field>
           <Field label="Kritik stok sınırı" hint="Bunun altına düşünce uyarı verir.">

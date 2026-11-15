@@ -87,8 +87,8 @@ export default function StockPage() {
           value={tl(est.profit)}
           sub={
             est.fees > 0
-              ? `${tl(est.fees)} komisyon ve kargo düşüldü${est.coverage < 0.95 ? ` · stoğun %${Math.round(est.coverage * 100)}'i için` : ''}`
-              : 'Kanal maliyeti girilince komisyon ve kargo da düşülür'
+              ? `${tl(est.fees)} komisyon ve kargo, ${tl(est.vat)} KDV ve stopaj düşüldü${est.coverage < 0.95 ? ` · kanal maliyeti stoğun %${Math.round(est.coverage * 100)}'i için var` : ''}`
+              : `${tl(est.vat)} KDV düşüldü · kanal maliyeti girilince komisyon ve kargo da düşülür`
           }
         />
         <Stat label="Kritik stok" value={num(critical.length)} sub={negative.length ? `${num(negative.length)} varyant eksi, sayım gerekli` : 'varyant alt sınırda ya da altında'} />
@@ -173,7 +173,8 @@ export default function StockPage() {
                 const costs = Array.from(new Set(m.items.map((i) => i.cost)))
                 const price = prices.length === 1 ? prices[0] : null
                 const cost = costs.length === 1 ? costs[0] : null
-                const margin = price && cost ? (price - cost) / price : null
+                const vat0 = m.items[0].vat_rate ?? 20
+                const margin = price && cost ? (price / (1 + vat0 / 100) - cost) / (price / (1 + vat0 / 100)) : null
                 const toggle = () =>
                   setExpanded((x) => {
                     const n = new Set(x)
@@ -269,7 +270,8 @@ function ItemRow({ i, vel, onAdjust, onEdit, child }: { i: ItemWithStock; vel: M
   const v = vel.get(i.id)?.total ?? 0
   const days = coverDays(i.total, v)
   const low = i.min_stock > 0 && i.total <= i.min_stock
-  const margin = i.price > 0 && i.cost > 0 ? (i.price - i.cost) / i.price : null
+  const net = i.price / (1 + (i.vat_rate ?? 20) / 100)
+  const margin = i.price > 0 && i.cost > 0 ? (net - i.cost) / net : null
   const cell = qtyCell
   const setAdjust = onAdjust
   const setItemForm = onEdit

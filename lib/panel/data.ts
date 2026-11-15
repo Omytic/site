@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Brand, BrandOrGenel, Channel, LocationId, Unit } from './constants'
+import { itemEconomics } from './economics'
 
 // ---------------------------------------------------------------------------
 // Tipler (veritabanı satırları)
@@ -324,7 +325,8 @@ export function estimateCosts(costs: ChannelCost[] | undefined, channel: string,
     const c = costFor(costs, channel, l.name)
     if (!c) return
     any = true
-    commission += (l.qty * l.price * Number(c.commission_pct)) / 100
+    // oran KDV hariç; komisyon faturasına %20 KDV eklenir
+    commission += (l.qty * l.price * Number(c.commission_pct) * 1.2) / 100
     fee += l.qty * Number(c.fee_per_unit)
   })
   return any ? { commission: Math.round(commission * 100) / 100, fee: Math.round(fee * 100) / 100 } : null
@@ -346,9 +348,9 @@ export function useItemsWithStock() {
 }
 
 /**
- * Elimizdeki stok satılırsa: satış değeri, maliyet, tahmini komisyon + kargo ve kalan kâr.
+ * Elimizdeki stok satılırsa: satış değeri, maliyet, komisyon + kargo, KDV ve stopaj sonrası kalan kâr.
  * FBA'daki ve Amazon'a yoldaki stok Amazon maliyetiyle; depodaki stok o modelin son 180 günlük
- * kanal dağılımına göre hesaplanır (satış yoksa kanal gideri düşülmez).
+ * kanal dağılımına göre hesaplanır (satış yoksa kanal gideri düşülmez, sadece KDV).
  */
 export function estimateStock(items: ItemWithStock[], lines: SaleLine[], costs: ChannelCost[] | undefined, since: string) {
   const mix = new Map<string, Map<string, number>>()
@@ -359,13 +361,11 @@ export function estimateStock(items: ItemWithStock[], lines: SaleLine[], costs: 
     m.set(l.channel, (m.get(l.channel) ?? 0) + Number(l.qty))
     mix.set(k, m)
   })
-  const unitFee = (channel: string, i: ItemWithStock) => {
-    const c = costFor(costs, channel, i.name)
-    return c ? (i.price * Number(c.commission_pct)) / 100 + Number(c.fee_per_unit) : 0
-  }
   let retail = 0
   let cost = 0
   let fees = 0
+  let vat = 0
+  let profit = 0
   let covered = 0
   let units = 0
   items.forEach((i) => {
@@ -376,22 +376,23 @@ export function estimateStock(items: ItemWithStock[], lines: SaleLine[], costs: 
     units += q
     retail += q * i.price
     cost += q * i.cost
-    fees += az * unitFee('amazon', i)
-    if (az && costFor(costs, 'amazon', i.name)) covered += az
+    const add = (n: number, ch: string | null) => {
+      const c = ch ? costFor(costs, ch, i.name) : null
+      const e = itemEconomics(i, c, c ? ch : null)
+      fees += n * (e.commission + e.cargo)
+      vat += n * (e.payableVat + e.stopaj)
+      profit += n * e.profit
+      if (c) covered += n
+    }
+    if (az) add(az, 'amazon')
     const m = mix.get(i.name.trim().toLocaleLowerCase('tr'))
     const tot = m ? Array.from(m.values()).reduce((a, b) => a + b, 0) : 0
-    if (dp && m && tot > 0) {
-      let f = 0
-      let known = 0
-      m.forEach((n, ch) => {
-        f += (n / tot) * unitFee(ch, i)
-        if (costFor(costs, ch, i.name)) known += n / tot
-      })
-      fees += dp * f
-      covered += dp * known
+    if (dp) {
+      if (m && tot > 0) m.forEach((n, ch) => add((dp * n) / tot, ch))
+      else add(dp, null)
     }
   })
-  return { retail, cost, fees, profit: retail - cost - fees, coverage: units ? covered / units : 0 }
+  return { retail, cost, fees, vat, profit, coverage: units ? covered / units : 0 }
 }
 
 /** Yeni numara/renk için SKU: modeldeki SKU'ların ön ekinden (FS-M900-4647-LAC gibi). */

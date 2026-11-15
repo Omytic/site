@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CHANNELS, label } from '@/lib/panel/constants'
 import { AFTER, costFor, groupModels, invalidate, write, type ChannelCost, type ItemWithStock, type Model } from '@/lib/panel/data'
+import { itemEconomics } from '@/lib/panel/economics'
 import { tl } from '@/lib/panel/format'
 import { Button, cx, Drawer, Input, Segmented, useUi } from './ui'
 
@@ -15,15 +16,14 @@ const COST_HINTS: Record<string, string> = {
   seryn_site: 'Ödeme altyapısı (PayTR vb.) kesintisi % ve adet başı kargo.',
 }
 
-/** Bir modelin satış kanalına göre adet başı net kârı. */
+/** Bir modelin satış kanalına göre adet başı net kârı (komisyon, kargo, KDV ve stopaj sonrası). */
 export function NetProfit({ model, costs, onSetup }: { model: Model; costs: ChannelCost[] | undefined; onSetup: () => void }) {
   const i = model.items[0]
   const rows = COST_CHANNELS.map((ch) => {
     const c = costFor(costs, ch, model.name)
     if (!c) return null
-    const fees = (i.price * Number(c.commission_pct)) / 100 + Number(c.fee_per_unit)
-    return { ch, fees, net: i.price - i.cost - fees }
-  }).filter(Boolean) as { ch: string; fees: number; net: number }[]
+    return { ch, e: itemEconomics(i, c, ch) }
+  }).filter(Boolean) as { ch: string; e: ReturnType<typeof itemEconomics> }[]
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-soft">
       <span className="font-bold text-ink">Adet başı net kâr</span>
@@ -35,11 +35,10 @@ export function NetProfit({ model, costs, onSetup }: { model: Model; costs: Chan
           </button>
         </span>
       ) : (
-        rows.map((r) => (
-          <span key={r.ch} title={`${tl(i.price)} satış − ${tl(i.cost)} maliyet − ${tl(r.fees)} komisyon/kargo`}>
-            {label(CHANNELS, r.ch)}{' '}
-            <b className={cx('tabular-nums', r.net < 0 ? 'text-[#b83030]' : 'text-ink')}>{tl(r.net)}</b>
-            <span className="text-ink-soft/50"> (−{tl(r.fees)} gider)</span>
+        rows.map(({ ch, e }) => (
+          <span key={ch} title={`Komisyon ${tl(e.commission)} · kargo ${tl(e.cargo)} · ödenecek KDV ${tl(e.payableVat)} · stopaj ${tl(e.stopaj)}`}>
+            {label(CHANNELS, ch)}{' '}
+            <b className={cx('tabular-nums', e.profit < 0 ? 'text-[#b83030]' : 'text-ink')}>{tl(e.profit)}</b>
           </span>
         ))
       )}
@@ -110,7 +109,7 @@ export function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[];
       }
     >
       <p className="mb-4 text-sm text-ink-soft">
-        Her kanal için bir kez girin: satış girerken ve pazaryeri senkronunda komisyon ile kargo otomatik hesaplanır, Stok’taki tahmini kâr ve adet başı net kâr da bundan çıkar. Modele özel değer girmezseniz “Bütün ürünler” satırı kullanılır.
+        Komisyon oranını pazaryerinin verdiği gibi (KDV hariç) yazın, faturadaki %20 KDV otomatik eklenir. Kargo / FBA ücretini KDV dahil yazın. Net kâr; komisyon, kargo, ödenecek KDV ve pazaryerinde %1 stopaj düşülerek hesaplanır. Her kanal için bir kez girin: satış girerken ve pazaryeri senkronunda komisyon ile kargo otomatik hesaplanır, Stok’taki tahmini kâr ve adet başı net kâr da bundan çıkar. Modele özel değer girmezseniz “Bütün ürünler” satırı kullanılır.
       </p>
       <Segmented value={ch} onChange={setCh} size="sm" options={COST_CHANNELS.map((c) => ({ id: c, label: label(CHANNELS, c) }))} />
       <p className="mt-3 text-xs text-ink-soft/70">{COST_HINTS[ch]}</p>
@@ -118,7 +117,7 @@ export function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[];
         <div className="grid grid-cols-[1fr_96px_112px_100px] items-center gap-2 bg-[#F7F6F2] px-3 py-2 text-xs font-semibold text-ink-soft/70">
           <span>Ürün</span>
           <span>Komisyon %</span>
-          <span>{ch === 'amazon' ? 'FBA/kargo ₺/adet' : 'Kargo ₺/adet'}</span>
+          <span>{ch === 'amazon' ? 'FBA/kargo ₺/adet' : 'Kargo ₺/adet'} (KDV dahil)</span>
           <span className="text-right">Net kâr/adet</span>
         </div>
         {[null, ...models].map((m) => {
@@ -126,7 +125,7 @@ export function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[];
           const x = val(name)
           const eff = x.pct !== '' || x.fee !== '' ? x : name ? general : x
           const i = m?.items[0]
-          const net = i && (eff.pct !== '' || eff.fee !== '') ? i.price - i.cost - (i.price * (Number(eff.pct) || 0)) / 100 - (Number(eff.fee) || 0) : null
+          const net = i && (eff.pct !== '' || eff.fee !== '') ? itemEconomics(i, { commission_pct: Number(eff.pct) || 0, fee_per_unit: Number(eff.fee) || 0 }, ch).profit : null
           return (
             <div key={name ?? 'all'} className={cx('grid grid-cols-[1fr_96px_112px_100px] items-center gap-2 border-t border-line px-3 py-2', !m && 'bg-[#FBFAF7]')}>
               <div className="min-w-0">

@@ -10,6 +10,7 @@ import { addVariants, AFTER, groupModels, invalidate, Q, useItemsWithStock, vari
 import { num, tl } from '@/lib/panel/format'
 import { ItemForm } from '@/components/panel/ItemForm'
 import { CostsDrawer, NetProfit } from '@/components/panel/costs'
+import { ProfitCalc } from '@/components/panel/ProfitCalc'
 import { Button, Card, cx, Empty, ErrorNote, Field, Input, PageHeader, Segmented, Select, Skeleton, Stat, StatusPill, Table, useUi } from '@/components/panel/ui'
 
 /*
@@ -307,7 +308,10 @@ function ModelPage({ model }: { model: Model }) {
               <Field label="Birim maliyet, KDV dahil (₺)" hint="İkisinden birini yazmanız yeter.">
                 <Input type="number" min="0" step="any" value={f.costInc} placeholder="karışık" onChange={(e) => setCostInc(e.target.value)} />
               </Field>
-              <Field label={`Satış fiyatı (₺${isFabric ? ' / ' + first.unit : ''})`}>
+              <Field
+                label={`Satış fiyatı, KDV dahil (₺${isFabric ? ' / ' + first.unit : ''})`}
+                hint={Number(f.price) > 0 ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat) || 0) / 100))}` : undefined}
+              >
                 <Input type="number" min="0" step="any" value={f.price} placeholder="karışık" onChange={(e) => setF({ ...f, price: e.target.value })} />
               </Field>
               <Field label="Kritik stok sınırı" hint="Her varyant için ayrı ayrı.">
@@ -372,6 +376,10 @@ function ModelPage({ model }: { model: Model }) {
             )}
           </Card>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <ProfitCalc model={model} costs={costs.data} title="Bir adet satışta kâr ve KDV" />
       </div>
 
       <Card className="mt-4" pad={false} title="Varyantlar" action={<span className="text-xs text-ink-soft/60">Tek bir numarayı ayrı fiyatlamak için kalem</span>}>
