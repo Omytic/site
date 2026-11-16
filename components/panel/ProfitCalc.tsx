@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { CHANNELS, label } from '@/lib/panel/constants'
-import { costFor, variantLabel, type ChannelCost, type Model } from '@/lib/panel/data'
+import { costFor, modelTitle, variantLabel, type ChannelCost, type Model } from '@/lib/panel/data'
 import { MARKETPLACES, STOPAJ_PCT, unitEconomics } from '@/lib/panel/economics'
 import { pct, tl as tl0 } from '@/lib/panel/format'
 
@@ -38,7 +38,7 @@ export function ProfitCalc({ model, costs, title = 'Kâr ve KDV hesabı' }: { mo
   const fromModel = () => {
     const i = model?.items.find((x) => x.id === vid) ?? model?.items[0]
     const vat = Number(i?.vat_rate ?? 20)
-    const c = model ? costFor(costs, ch, model.name) : costFor(costs, ch, '')
+    const c = model ? costFor(costs, ch, modelTitle(model)) : costFor(costs, ch, '')
     return {
       price: i ? fmt(i.price) : '',
       vat: String(vat),

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { BRANDS } from '@/lib/panel/constants'
-import { groupModels, Q, useItemsWithStock } from '@/lib/panel/data'
+import { groupModels, modelTitle, Q, useItemsWithStock } from '@/lib/panel/data'
 import { ProfitCalc } from '@/components/panel/ProfitCalc'
 import { PageHeader, Select } from '@/components/panel/ui'
 
@@ -29,7 +29,7 @@ export default function ProfitPage() {
               <optgroup key={b.id} label={b.label}>
                 {list.map((m) => (
                   <option key={m.key} value={m.key}>
-                    {m.name}
+                    {modelTitle(m)}
                   </option>
                 ))}
               </optgroup>
@@ -37,7 +37,7 @@ export default function ProfitPage() {
           })}
         </Select>
       </div>
-      <ProfitCalc model={model} costs={costs.data} title={model ? `${model.name} · bir adet` : 'Bir adet satış'} />
+      <ProfitCalc model={model} costs={costs.data} title={model ? `${modelTitle(model)} · bir adet` : 'Bir adet satış'} />
     </>
   )
 }

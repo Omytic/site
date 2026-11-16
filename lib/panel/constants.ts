@@ -6,7 +6,7 @@ export const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#
 
 export type Brand = 'formstep' | 'seryn' | 'kumas' | 'diger'
 export type BrandOrGenel = Brand | 'genel'
-export type Channel = 'amazon' | 'trendyol' | 'hepsiburada' | 'seryn_site' | 'toptan' | 'diger'
+export type Channel = 'amazon' | 'trendyol' | 'hepsiburada' | 'seryn_site' | 'toptan' | 'fuar' | 'diger'
 export type LocationId = 'depo' | 'yolda' | 'amazon'
 export type Unit = 'adet' | 'metre' | 'top' | 'kg' | 'paket'
 
@@ -27,6 +27,7 @@ export const CHANNELS: { id: Channel; label: string; color: string }[] = [
   { id: 'hepsiburada', label: 'Hepsiburada', color: SERIES[2] },
   { id: 'seryn_site', label: 'seryn.com.tr', color: SERIES[3] },
   { id: 'toptan', label: 'Toptan', color: SERIES[4] },
+  { id: 'fuar', label: 'Fuar', color: '#E3AB3B' },
   { id: 'diger', label: 'Diğer', color: SERIES[5] },
 ]
 
@@ -103,6 +104,7 @@ export const AD_PLATFORMS = [
   { id: 'trendyol_ads', label: 'Trendyol Reklam', color: SERIES[3] },
   { id: 'hepsiburada_ads', label: 'Hepsiburada Reklam', color: SERIES[4] },
   { id: 'tiktok', label: 'TikTok', color: SERIES[5] },
+  { id: 'isbirligi', label: 'İş birliği (influencer)', color: '#c2559d' },
   { id: 'diger', label: 'Diğer', color: '#8a8f99' },
 ]
 
@@ -144,6 +146,13 @@ export const TABLE_LABELS: Record<string, string> = {
   tasks: 'İş',
   assets: 'Dijital varlık',
   asset_metrics: 'Takipçi ölçümü',
+  fairs: 'Fuar',
+  fair_items: 'Fuara götürülen ürün',
+  collaborations: 'İş birliği',
+  collab_items: 'İş birliği ürünü',
+  leads: 'Talep',
+  lead_items: 'Numune ürünü',
+  invoices: 'Fatura',
   products: 'Vitrin ürünü',
   settings: 'Site ayarları',
   channel_listings: 'Pazaryeri eşleştirmesi',

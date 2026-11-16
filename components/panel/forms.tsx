@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { BRANDS, itemImage, LOCATIONS, type LocationId } from '@/lib/panel/constants'
-import { addVariants, groupModels, variantLabel, type ItemWithStock, type Model } from '@/lib/panel/data'
+import { addVariants, groupModels, modelTitle, variantLabel, type ItemWithStock, type Model } from '@/lib/panel/data'
 import { ItemForm } from './ItemForm'
 import { num, tl } from '@/lib/panel/format'
 import { Button, cx, Input, Select, useUi } from './ui'
@@ -80,6 +80,7 @@ export function LinesEditor({
   noPrice,
   priceFromCard,
   allowNew,
+  pickTitle,
 }: {
   items: ItemWithStock[]
   lines: Line[]
@@ -94,6 +95,8 @@ export function LinesEditor({
   priceFromCard?: boolean
   /** Satırda yeni numara / renk ve yeni ürün (kumaş vb.) eklenebilsin (alım). */
   allowNew?: boolean
+  /** Ürün seçme başlığı (varsayılan: "Ne alındı / satıldı?") */
+  pickTitle?: string
 }) {
   const { toast } = useUi()
   const models = useMemo(() => groupModels(items.filter((i) => i.active || lines.some((l) => l.item_id === i.id))), [items, lines])
@@ -192,7 +195,7 @@ export function LinesEditor({
         if (!m) return null
         const ls = linesOf(m)
         const blockQty = ls.reduce((a, l) => a + (Number(l.qty) || 0), 0)
-        const single = m.items.length === 1 && !m.items[0].variant && !m.items[0].color
+        const single = m.brand === 'seryn' || (m.items.length === 1 && !m.items[0].variant && !m.items[0].color)
         const img = itemImage(m.items[0])
         const loc = stockFrom?.({ item_id: m.items[0].id, qty: '', price: '', location_id: locOf(m) })
         const shorts = ls.filter((l) => {
@@ -210,7 +213,7 @@ export function LinesEditor({
                 <span className="h-8 w-1 shrink-0 rounded-full" style={{ backgroundColor: BRANDS.find((b) => b.id === m.brand)?.color }} />
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold text-ink">{m.name}</p>
+                <p className="truncate font-semibold text-ink">{modelTitle(m)}</p>
                 {!single && (
                   <p className="text-xs text-ink-soft/60">
                     {blockQty > 0 ? (
@@ -320,7 +323,7 @@ export function LinesEditor({
               </div>
             )}
 
-            {allowNew &&
+            {allowNew && m.brand !== 'seryn' &&
               (adding[m.key] ? (
                 <div className="mt-2.5 rounded-xl bg-[#F7F6F2] p-2.5">
                   <p className="mb-2 text-xs font-semibold text-ink-soft">
@@ -366,7 +369,7 @@ export function LinesEditor({
       {open.length === 0 || picking ? (
         <div className="rounded-2xl bg-white p-3 ring-1 ring-line">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-bold text-ink">{open.length ? 'Başka ürün ekle' : 'Ne alındı / satıldı? Ürünü seçin'}</p>
+            <p className="text-sm font-bold text-ink">{open.length ? 'Başka ürün ekle' : pickTitle ?? 'Ne alındı / satıldı? Ürünü seçin'}</p>
             {open.length > 0 && (
               <button type="button" className="text-xs font-semibold text-ink-soft hover:text-ink" onClick={() => setPicking(false)}>
                 Kapat
@@ -399,9 +402,9 @@ export function LinesEditor({
                           <span className="h-9 w-1 shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
                         )}
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold text-ink">{m.name.replace(/^FormStep /, '')}</span>
+                          <span className="block truncate text-sm font-semibold text-ink">{m.brand === 'seryn' ? m.items[0].variant || m.name : m.name.replace(/^FormStep /, '')}</span>
                           <span className="block truncate text-[11px] text-ink-soft/60">
-                            {m.items.length > 1 ? `${m.items.length} varyant` : variantLabel(m.items[0]) || m.items[0].unit} · {num(m.total)} stok
+                            {m.brand === 'seryn' ? `${num(m.total)} stok` : `${m.items.length > 1 ? `${m.items.length} varyant` : variantLabel(m.items[0]) || m.items[0].unit} · ${num(m.total)} stok`}
                           </span>
                         </span>
                       </button>

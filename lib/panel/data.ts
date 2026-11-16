@@ -14,7 +14,10 @@ export interface Item {
   vat_rate?: number; cost: number; price: number; min_stock: number; active: boolean; notes: string | null; created_at: string
 }
 export interface StockLevel { item_id: string; location_id: LocationId; qty: number }
-export interface SaleItem { id?: string; item_id: string; qty: number; unit_price: number; unit_cost?: number | null; location_id?: LocationId }
+export interface SaleItem {
+  id?: string; item_id: string; qty: number; unit_price: number; unit_cost?: number | null; location_id?: LocationId
+  list_price?: number | null; discount?: number; platform_discount?: number; campaign?: string | null
+}
 export interface Sale {
   id: string; sale_date: string; channel: Channel; order_no: string | null; customer: string | null
   status: 'tamamlandi' | 'iade' | 'iptal'; commission: number; shipping_cost: number
@@ -47,12 +50,14 @@ export interface LedgerRow {
 export interface Transaction {
   id: string; tx_date: string; direction: 'gelir' | 'gider'; category: string; amount: number; brand: BrandOrGenel
   channel: string | null; counterparty: string | null; payment_status: 'odendi' | 'bekliyor'; due_date: string | null
-  note: string | null; created_at: string; created_by: string | null
+  note: string | null; created_at: string; created_by: string | null; fair_id?: string | null
 }
 export interface SaleLine {
   sale_id: string; sale_date: string; channel: Channel; status: string; item_id: string; brand: Brand
   name: string; variant: string | null; unit: Unit; qty: number; unit_price: number; unit_cost: number
   location_id: LocationId; revenue: number; cogs: number
+  sale_item_id?: string; list_price?: number | null; discount?: number; platform_discount?: number; campaign?: string | null
+  fair_id?: string | null; payment_method?: string | null; created_at?: string; order_no?: string | null
 }
 export interface AdBudget { id: string; month: string; platform: string; brand: BrandOrGenel; budget: number; note: string | null }
 export interface AdSpend { id: string; spend_date: string; platform: string; brand: BrandOrGenel; amount: number; campaign: string | null; note: string | null; created_by: string | null }
@@ -64,6 +69,31 @@ export interface Task {
 export interface Asset {
   id: string; kind: string; name: string; url: string | null; handle: string | null; brand: BrandOrGenel
   owner: string | null; followers: number | null; note: string | null; updated_at: string
+}
+export interface Fair {
+  id: string; name: string; start_date: string; end_date: string; city: string | null; venue: string | null
+  organizer: string | null; website: string | null; country: string; category: string; brands: string[]
+  priority: 'yuksek' | 'orta' | 'dusuk'; status: string; why: string | null; note: string | null
+  budget: number | null; cost: number | null; contacts: number | null; source: string | null
+  updated_at: string; updated_by: string | null
+}
+export interface FairItem { id: string; fair_id: string; item_id: string; qty_taken: number; price: number | null }
+export interface Collab {
+  id: string; person: string; handle: string | null; platform: string; brand: BrandOrGenel; scope: string | null
+  fee: number; shipping: number; status: string; sent_date: string | null; post_url: string | null; phone: string | null
+  note: string | null; created_at: string; updated_at: string; updated_by: string | null
+  collab_items: { id?: string; item_id: string; qty: number }[]
+}
+export interface Lead {
+  id: string; source: string; kind: string; brand: BrandOrGenel | null; name: string; company: string | null; phone: string | null
+  email: string | null; city: string | null; address: string | null; message: string | null; status: string; owner: string | null
+  next_date: string | null; fair_id: string | null; sample_sent_at: string | null; note: string | null; created_at: string
+  updated_at: string; updated_by: string | null; lead_items: { id?: string; item_id: string; qty: number }[]
+}
+export interface Invoice {
+  id: string; inv_date: string; kind: string; issuer: string | null; number: string | null; counterparty: string | null
+  amount: number | null; vat: number | null; brand: BrandOrGenel | null; file_path: string | null; file_name: string | null
+  file_size: number | null; note: string | null; created_at: string; created_by: string | null
 }
 export interface AssetMetric { id: string; asset_id: string; metric_date: string; followers: number }
 export interface AuditRow {
@@ -183,6 +213,12 @@ export const Q = {
   adBudgets: () => useQuery('ad_budgets', () => must<AdBudget[]>(supabase.from('ad_budgets').select('*').order('month', { ascending: false }))),
   adSpend: () => useQuery('ad_spend', () => all<AdSpend>((a, b) => supabase.from('ad_spend').select('*').order('spend_date', { ascending: false }).range(a, b))),
   tasks: () => useQuery('tasks', () => must<Task[]>(supabase.from('tasks').select('*').order('created_at', { ascending: false }))),
+  fairItems: () => useQuery('fair_items', () => must<FairItem[]>(supabase.from('fair_items').select('*'))),
+  collabs: () =>
+    useQuery('collaborations', () => must<Collab[]>(supabase.from('collaborations').select('*, collab_items(*)').order('created_at', { ascending: false }))),
+  leads: () => useQuery('leads', () => must<Lead[]>(supabase.from('leads').select('*, lead_items(*)').order('created_at', { ascending: false }))),
+  invoices: () => useQuery('invoices', () => all<Invoice>((a, b) => supabase.from('invoices').select('*').order('inv_date', { ascending: false }).range(a, b))),
+  fairs: () => useQuery('fairs', () => must<Fair[]>(supabase.from('fairs').select('*').order('start_date'))),
   assets: () => useQuery('assets', () => must<Asset[]>(supabase.from('assets').select('*').order('brand').order('name'))),
   assetMetrics: () => useQuery('asset_metrics', () => must<AssetMetric[]>(supabase.from('asset_metrics').select('*').order('metric_date'))),
   channelCosts: () => useQuery('channel_costs', () => must<ChannelCost[]>(supabase.from('channel_costs').select('*').order('channel'))),
@@ -202,6 +238,11 @@ export const AFTER = {
   tasks: ['tasks', 'audit:300', 'audit:40'],
   assets: ['assets', 'asset_metrics', 'audit:300', 'audit:40'],
   costs: ['channel_costs', 'audit:300', 'audit:40'],
+  fairs: ['fairs', 'audit:300', 'audit:40'],
+  fair: ['fairs', 'fair_items', 'sales', 'sale_lines', 'stock', 'movements', 'ledger', 'transactions', 'items', 'audit:300', 'audit:40'],
+  collabs: ['collaborations', 'stock', 'movements', 'ad_spend', 'ledger', 'audit:300', 'audit:40'],
+  leads: ['leads', 'stock', 'movements', 'audit:300', 'audit:40'],
+  invoices: ['invoices', 'audit:300', 'audit:40'],
 }
 
 /** Supabase yazma işlemini çalıştırır, hata varsa Türkçe mesajla fırlatır. */
@@ -265,6 +306,7 @@ export function itemLabel(i: Pick<Item, 'name' | 'variant' | 'color'>) {
 
 // ---------------------------------------------------------------------------
 // Model = aynı marka + aynı ürün adı (ör. FormStep M100). Varyantlar = numara / renk.
+// SERYN boyları varyant değil, ayrı ürün: 10 g, 18 g ve 18 g Lansman birbirine karışmaz.
 // ---------------------------------------------------------------------------
 export interface Model<T extends ItemWithStock = ItemWithStock> {
   key: string
@@ -274,7 +316,16 @@ export interface Model<T extends ItemWithStock = ItemWithStock> {
   stock: Record<LocationId, number>
   total: number
 }
-export const modelKey = (i: Pick<Item, 'brand' | 'name'>) => `${i.brand}|${i.name.trim().toLocaleLowerCase('tr')}`
+export const modelKey = (i: Pick<Item, 'brand' | 'name' | 'variant'>) =>
+  i.brand === 'seryn'
+    ? `seryn|${(i.variant || i.name).trim().toLocaleLowerCase('tr')}`
+    : `${i.brand}|${i.name.trim().toLocaleLowerCase('tr')}`
+
+export function modelTitle(m: { brand: string; name: string; items: { variant?: string | null }[] }) {
+  if (m.brand !== 'seryn' || m.items.length !== 1) return m.name
+  const v = m.items[0].variant
+  return v ? `${m.name} · ${v}` : m.name
+}
 
 /** Numaraları doğal sırayla dizer: 36-37 < 37-38 < … < 43-45; renk varsa önce renk. */
 export function sortVariants<T extends Pick<Item, 'variant' | 'color'>>(list: T[]) {

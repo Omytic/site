@@ -7,7 +7,7 @@ import { useOpenFromQuery } from '@/components/panel/forms'
 import { ArrowLeft, Boxes, Palette, Pencil, Plus, Ruler } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRANDS, itemImage, label, type Brand } from '@/lib/panel/constants'
-import { addVariants, AFTER, groupModels, invalidate, Q, useItemsWithStock, variantLabel, write, type ItemWithStock, type Model } from '@/lib/panel/data'
+import { addVariants, AFTER, groupModels, invalidate, modelTitle, Q, useItemsWithStock, variantLabel, write, type ItemWithStock, type Model } from '@/lib/panel/data'
 import { num, tl } from '@/lib/panel/format'
 import { ItemForm } from '@/components/panel/ItemForm'
 import { CostsDrawer, NetProfit } from '@/components/panel/costs'
@@ -114,7 +114,6 @@ const sameOrNull = (m: Model, k: 'price' | 'cost' | 'vat_rate' | 'min_stock') =>
 }
 
 function ModelCard({ m }: { m: Model }) {
-  if (m.brand === 'seryn') return <SerynCard m={m} />
   const img = itemImage(m.items[0])
   const cost = sameOrNull(m, 'cost')
   const vat = sameOrNull(m, 'vat_rate')
@@ -135,12 +134,18 @@ function ModelCard({ m }: { m: Model }) {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-lg font-black text-ink">{m.name}</p>
+            <p className="truncate font-display text-lg font-black text-ink">{modelTitle(m)}</p>
             <p className="text-xs text-ink-soft/60">
-              {sizes.length > 0 && `${sizes.length} ${m.brand === 'kumas' ? 'tip' : 'numara'}`}
-              {sizes.length > 0 && colors.length > 0 && ' · '}
-              {colors.length > 0 && `${colors.length} renk`}
-              {!sizes.length && !colors.length && label(BRANDS, m.brand)}
+              {m.brand === 'seryn' ? (
+                label(BRANDS, m.brand)
+              ) : (
+                <>
+                  {sizes.length > 0 && `${sizes.length} ${m.brand === 'kumas' ? 'tip' : 'numara'}`}
+                  {sizes.length > 0 && colors.length > 0 && ' · '}
+                  {colors.length > 0 && `${colors.length} renk`}
+                  {!sizes.length && !colors.length && label(BRANDS, m.brand)}
+                </>
+              )}
             </p>
             <p className="mt-2 font-display text-2xl font-black tabular-nums text-ink">
               {num(m.total)} <span className="text-sm font-semibold text-ink-soft/60">{m.items[0].unit}</span>
@@ -158,52 +163,6 @@ function ModelCard({ m }: { m: Model }) {
             {cost ? ` + %${num(vat ?? 20)} KDV` : ''} · Satış <b className="text-ink">{price === null ? 'karışık' : tl(price, true)}</b>
           </span>
           {lows > 0 && <StatusPill tone="critical">{lows} kritik</StatusPill>}
-        </div>
-      </Card>
-    </Link>
-  )
-}
-
-function SerynCard({ m }: { m: Model }) {
-  return (
-    <Link href={`/admin/urunler?model=${encodeURIComponent(m.key)}`} className="group block sm:col-span-2 lg:col-span-3">
-      <Card className="h-full transition group-hover:ring-[#E3AB3B]">
-        <p className="font-display text-lg font-black text-ink">{m.name}</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          {m.items.map((i) => {
-            const img = itemImage(i)
-            const low = i.active && i.min_stock > 0 && i.total <= i.min_stock
-            return (
-              <div key={i.id} className="flex items-center gap-3 rounded-xl bg-[#F4F3EF] p-2.5">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
-                  {img ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img} alt="" className="h-full w-full object-contain p-1" />
-                  ) : (
-                    <Boxes className="h-6 w-6 text-ink-soft/30" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink">{i.variant || 'Varyant'}</p>
-                  <p className="font-display text-xl font-black tabular-nums leading-tight text-ink">
-                    {num(i.total)} <span className="text-xs font-semibold text-ink-soft/60">{i.unit}</span>
-                  </p>
-                  <p className="text-xs text-ink-soft/60">
-                    depo {num(i.stock.depo)} · FBA {num(i.stock.amazon)}
-                    {i.stock.yolda ? ` · yolda ${num(i.stock.yolda)}` : ''}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-soft">
-                    Satış <b className="text-ink">{tl(i.price, true)}</b>
-                    {low && (
-                      <span className="ml-1.5">
-                        <StatusPill tone="critical">kritik</StatusPill>
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-            )
-          })}
         </div>
       </Card>
     </Link>
@@ -252,8 +211,8 @@ function ModelPage({ model }: { model: Model }) {
     try {
       await write(supabase.from('items').update(patch).in('id', model.items.map((i) => i.id)))
       invalidate(...AFTER.item)
-      toast(`${model.items.length} varyant güncellendi. Alımlarda bu maliyet kullanılacak.`)
-      if (patch.name) router.replace(`/admin/urunler?model=${encodeURIComponent(`${model.brand}|${String(patch.name).toLocaleLowerCase('tr')}`)}`)
+      toast(model.brand === 'seryn' ? 'Kaydedildi. Alımlarda bu maliyet kullanılacak.' : `${model.items.length} varyant güncellendi. Alımlarda bu maliyet kullanılacak.`)
+      if (patch.name && model.brand !== 'seryn') router.replace(`/admin/urunler?model=${encodeURIComponent(`${model.brand}|${String(patch.name).toLocaleLowerCase('tr')}`)}`)
     } catch (err: any) {
       toast(err.message, 'error')
     } finally {
@@ -319,12 +278,14 @@ function ModelPage({ model }: { model: Model }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink-soft/60">{label(BRANDS, model.brand)}</p>
-          <h1 className="font-display text-4xl font-black tracking-tight text-ink">{model.name}</h1>
-          <p className="mt-1 text-sm text-ink-soft">
-            {sizes.length > 0 && `${sizes.length} ${isFabric ? 'tip' : 'numara'}`}
-            {sizes.length > 0 && colors.filter(Boolean).length > 0 && ' · '}
-            {colors.filter(Boolean).length > 0 && `${colors.filter(Boolean).length} renk`} · {model.items.length} varyant
-          </p>
+          <h1 className="font-display text-4xl font-black tracking-tight text-ink">{modelTitle(model)}</h1>
+          {model.brand !== 'seryn' && (
+            <p className="mt-1 text-sm text-ink-soft">
+              {sizes.length > 0 && `${sizes.length} ${isFabric ? 'tip' : 'numara'}`}
+              {sizes.length > 0 && colors.filter(Boolean).length > 0 && ' · '}
+              {colors.filter(Boolean).length > 0 && `${colors.filter(Boolean).length} renk`} · {model.items.length} varyant
+            </p>
+          )}
         </div>
       </div>
 
@@ -332,13 +293,13 @@ function ModelPage({ model }: { model: Model }) {
         <Stat tone="dark" label="Toplam stok" value={`${num(model.total)} ${first.unit}`} sub={`depo ${num(model.stock.depo)} · FBA ${num(model.stock.amazon)}${model.stock.yolda ? ` · yolda ${num(model.stock.yolda)}` : ''}`} />
         <Stat label="Stok değeri · maliyet" value={tl(value)} sub="KDV hariç" />
         <Stat label="Stok değeri · satış fiyatıyla" value={tl(retail)} />
-        <Stat label="Kritik varyant" value={num(lows.length)} sub={lows.length ? lows.map((i) => variantLabel(i)).slice(0, 4).join(', ') : 'yok'} />
+        <Stat label={model.brand === 'seryn' ? 'Kritik stok' : 'Kritik varyant'} value={num(lows.length)} sub={lows.length ? lows.map((i) => variantLabel(i)).slice(0, 4).join(', ') : 'yok'} />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <Card title="Fiyat, maliyet ve KDV" action={<span className="text-xs text-ink-soft/60">{model.items.length} varyantın hepsine</span>}>
+        <Card title="Fiyat, maliyet ve KDV" action={model.items.length > 1 ? <span className="text-xs text-ink-soft/60">{model.items.length} varyantın hepsine</span> : undefined}>
           <form onSubmit={saveAll} className="space-y-3">
-            <Field label="Ürün / model adı">
+            <Field label={model.brand === 'seryn' ? 'Ürün adı' : 'Ürün / model adı'}>
               <Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -363,14 +324,14 @@ function ModelPage({ model }: { model: Model }) {
               >
                 <Input type="number" min="0" step="any" value={f.price} placeholder="karışık" onChange={(e) => setF({ ...f, price: e.target.value })} />
               </Field>
-              <Field label="Kritik stok sınırı" hint="Her varyant için ayrı ayrı.">
+              <Field label="Kritik stok sınırı" hint={model.items.length > 1 ? 'Her varyant için ayrı ayrı.' : undefined}>
                 <Input type="number" min="0" step="any" value={f.min_stock} placeholder="karışık" onChange={(e) => setF({ ...f, min_stock: e.target.value })} />
               </Field>
             </div>
             <div className="flex items-center justify-between gap-3 pt-1">
               <p className="text-xs text-ink-soft/60">Boş bıraktığınız alan değişmez.</p>
               <Button type="submit" loading={busy}>
-                Hepsine kaydet
+                {model.items.length > 1 ? 'Hepsine kaydet' : 'Kaydet'}
               </Button>
             </div>
           </form>
@@ -379,7 +340,7 @@ function ModelPage({ model }: { model: Model }) {
           </div>
         </Card>
 
-        <div className="space-y-4">
+        {model.brand !== 'seryn' && <div className="space-y-4">
           <Card title={isFabric ? 'Yeni tip / ebat ekle' : 'Yeni numara ekle'}>
             <div className="flex flex-wrap items-end gap-2">
               <label className="min-w-[160px] flex-1">
@@ -424,14 +385,14 @@ function ModelPage({ model }: { model: Model }) {
               </div>
             )}
           </Card>
-        </div>
+        </div>}
       </div>
 
       <div className="mt-4">
         <ProfitCalc model={model} costs={costs.data} title="Bir adet satışta kâr ve KDV" />
       </div>
 
-      <Card className="mt-4" pad={false} title="Varyantlar" action={<span className="text-xs text-ink-soft/60">Tek bir numarayı ayrı fiyatlamak için kalem</span>}>
+      {model.brand !== 'seryn' && <Card className="mt-4" pad={false} title="Varyantlar" action={<span className="text-xs text-ink-soft/60">Tek bir numarayı ayrı fiyatlamak için kalem</span>}>
         <div className="pt-3">
           <Table
             head={
@@ -483,7 +444,7 @@ function ModelPage({ model }: { model: Model }) {
             })}
           </Table>
         </div>
-      </Card>
+      </Card>}
 
       {edit && <ItemForm item={edit} onClose={() => setEdit(null)} />}
       {costsOpen && <CostsDrawer items={model.items} costs={costs.data ?? []} onClose={() => setCostsOpen(false)} />}

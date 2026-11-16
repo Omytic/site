@@ -9,6 +9,7 @@ import { OmyMark } from './Nav'
 export function Contact({ waGeneral, phone, email }: { waGeneral: string; phone: string; email: string }) {
   const reduce = useReducedMotion()
   const [sent, setSent] = useState(false)
+  const [startedAt] = useState(() => Date.now())
 
   return (
     <section id="iletisim" className="relative overflow-hidden bg-night py-24 text-white sm:py-32">
@@ -81,15 +82,28 @@ export function Contact({ waGeneral, phone, email }: { waGeneral: string; phone:
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.9, delay: 0.2, ease: EASE }}
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault()
                 const f = e.currentTarget
                 const name = (f.elements.namedItem('name') as HTMLInputElement).value
+                const contact = (f.elements.namedItem('contact') as HTMLInputElement).value.trim()
                 const message = (f.elements.namedItem('message') as HTMLTextAreaElement).value
-                const subject = encodeURIComponent('Toptan kumaş talebi - OMY Ticaret')
-                const body = encodeURIComponent(`Ad-Soyad: ${name}\n\nMesaj:\n${message}`)
-                window.location.href = `mailto:${email}?subject=${subject}&body=${body}`
-                setSent(true)
+                const isMail = contact.includes('@')
+                // Önce panele (Talepler) gönder; olmazsa e-posta uygulamasını aç
+                try {
+                  const r = await fetch('/api/talep', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ kind: 'toptan', brand: 'kumas', name, phone: isMail ? '' : contact, email: isMail ? contact : '', message, t: startedAt }),
+                  })
+                  if (!r.ok) throw new Error()
+                  setSent(true)
+                  f.reset()
+                } catch {
+                  const subject = encodeURIComponent('Toptan kumaş talebi - OMY Ticaret')
+                  const body = encodeURIComponent(`Ad-Soyad: ${name}\nİletişim: ${contact}\n\nMesaj:\n${message}`)
+                  window.location.href = `mailto:${email}?subject=${subject}&body=${body}`
+                }
               }}
               className="space-y-3 rounded-[26px] border border-white/10 bg-white/[0.04] p-6 backdrop-blur"
             >
@@ -100,6 +114,15 @@ export function Contact({ waGeneral, phone, email }: { waGeneral: string; phone:
                 required
                 autoComplete="name"
                 placeholder="Ad soyad"
+                className="h-12 w-full rounded-2xl border border-white/10 bg-night/60 px-4 text-white outline-none transition placeholder:text-white/40 focus:border-thread"
+              />
+              <label htmlFor="contact" className="sr-only">Telefon ya da e-posta</label>
+              <input
+                id="contact"
+                name="contact"
+                required
+                autoComplete="tel"
+                placeholder="Telefon ya da e-posta"
                 className="h-12 w-full rounded-2xl border border-white/10 bg-night/60 px-4 text-white outline-none transition placeholder:text-white/40 focus:border-thread"
               />
               <label htmlFor="message" className="sr-only">Mesajınız</label>
@@ -113,8 +136,12 @@ export function Contact({ waGeneral, phone, email }: { waGeneral: string; phone:
               />
               <button type="submit" className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white font-bold text-night transition-colors hover:bg-thread">
                 <Send className="h-4 w-4" />
-                {sent ? 'E-posta uygulamanız açıldı' : 'E-postayla gönder'}
+                {sent ? 'Aldık, en kısa sürede dönüyoruz' : 'Gönder'}
               </button>
+              <p className="flex flex-wrap justify-center gap-x-4 gap-y-1 pt-1 text-xs font-semibold text-white/50">
+                <a href="/numune" className="hover:text-thread">Ücretsiz numune iste →</a>
+                <a href="/teklif" className="hover:text-thread">Detaylı teklif formu →</a>
+              </p>
             </motion.form>
           </div>
         </div>
@@ -133,11 +160,13 @@ export function SiteFooter() {
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/50">Toptan kumaş ticareti. FormStep ve SERYN markalarının çatısı.</p>
           </div>
           <ul className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-semibold text-white/60">
-            <li><a href="#kumaslar" className="hover:text-white">Kumaşlar</a></li>
-            <li><a href="#surec" className="hover:text-white">Süreç</a></li>
+            <li><a href="/#kumaslar" className="hover:text-white">Kumaşlar</a></li>
+            <li><a href="/#surec" className="hover:text-white">Süreç</a></li>
+            <li><a href="/teklif" className="hover:text-white">Toptan teklif</a></li>
+            <li><a href="/numune" className="hover:text-white">Numune iste</a></li>
             <li><a href="https://formstep.tr" target="_blank" rel="noopener noreferrer" className="hover:text-white">FormStep</a></li>
             <li><a href="https://seryn.com.tr" target="_blank" rel="noopener noreferrer" className="hover:text-white">SERYN</a></li>
-            <li><a href="#iletisim" className="hover:text-white">İletişim</a></li>
+            <li><a href="/#iletisim" className="hover:text-white">İletişim</a></li>
           </ul>
         </div>
         <p

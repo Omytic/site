@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -32,29 +32,24 @@ import { Button, cx, Drawer, Field, Input, useUi } from './ui'
 type NavPage = { href: string; label: string; icon: typeof Boxes; hint?: string }
 type NavSection = NavPage & { pages?: NavPage[] }
 
-// Ana menü 8 bölüm; birbirine yakın sayfalar bölümün içinde sekme olarak durur.
+// Birbirine yakın sayfalar bölümün içinde sekme olarak durur.
 const NAV: NavSection[] = [
   { href: '/admin', label: 'Genel bakış', icon: LayoutDashboard },
   { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
+  { href: '/admin/talepler', label: 'Talepler', icon: Inbox },
   { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
-  {
-    href: '/admin/stok',
-    label: 'Ürün ve stok',
-    icon: Boxes,
-    pages: [
-      { href: '/admin/stok', label: 'Stok', icon: Boxes, hint: 'Ne kadar var, ne zaman biter' },
-      { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag, hint: 'Fiyat, maliyet, numara ve renkler' },
-      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator, hint: 'Bir satıştan ne kalır' },
-    ],
-  },
+  { href: '/admin/stok', label: 'Stok', icon: Boxes },
+  { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag },
+  { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator },
   { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
   {
     href: '/admin/finans',
-    label: 'Para',
+    label: 'Finans',
     icon: Wallet,
     pages: [
       { href: '/admin/finans', label: 'Finans', icon: Wallet, hint: 'Gelir, gider, alacak, borç' },
       { href: '/admin/reklam', label: 'Reklam', icon: Megaphone, hint: 'Harcama ve bütçe' },
+      { href: '/admin/faturalar', label: 'Faturalar', icon: FileText, hint: 'Kesilen ve alınan faturalar' },
     ],
   },
   {
@@ -63,19 +58,15 @@ const NAV: NavSection[] = [
     icon: ListChecks,
     pages: [
       { href: '/admin/isler', label: 'İşler', icon: ListChecks, hint: 'Yapılacaklar' },
-      { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe, hint: 'Hesaplar, alan adları' },
       { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History, hint: 'Kim neyi değiştirdi' },
     ],
   },
-  {
-    href: '/admin/entegrasyonlar',
-    label: 'Site ve bağlantılar',
-    icon: Plug,
-    pages: [
-      { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug, hint: 'Pazaryeri senkronu' },
-      { href: '/admin/vitrin', label: 'Vitrin', icon: Store, hint: 'omytic.com içeriği' },
-    ],
-  },
+  { href: '/admin/fuarlar', label: 'Fuarlar', icon: CalendarDays },
+  { href: '/admin/isbirlikleri', label: 'İş birlikleri', icon: Handshake },
+  { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe },
+  { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug },
+  { href: '/admin/vitrin', label: 'Site Vitrini', icon: Store },
+  { href: '/admin/site-ayarlari', label: 'Site ayarları', icon: Settings },
 ]
 const matches = (href: string, path: string | null) => (href === '/admin' ? path === '/admin' : !!path?.startsWith(href))
 const sectionOf = (path: string | null) => NAV.find((s) => (s.pages ?? [s]).some((p) => matches(p.href, path)))
@@ -119,7 +110,7 @@ const TABS = [
   { href: '/admin', label: 'Özet', icon: LayoutDashboard },
   { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
   { href: '/admin/stok', label: 'Stok', icon: Boxes },
-  { href: '/admin/finans', label: 'Para', icon: Wallet },
+  { href: '/admin/finans', label: 'Finans', icon: Wallet },
 ]
 
 const QUICK = [
@@ -131,6 +122,9 @@ const QUICK = [
   { href: '/admin/finans?yeni=1', label: 'Gelir / gider', icon: Wallet },
   { href: '/admin/reklam?yeni=1', label: 'Reklam harcaması', icon: Megaphone },
   { href: '/admin/isler?yeni=1', label: 'İş', icon: ListChecks },
+  { href: '/admin/talepler?yeni=1', label: 'Talep / müşteri adayı', icon: Inbox },
+  { href: '/admin/isbirlikleri?yeni=1', label: 'İş birliği', icon: Handshake },
+  { href: '/admin/faturalar?yeni=1', label: 'Fatura', icon: FileText },
 ]
 
 function Mark() {
@@ -383,8 +377,8 @@ export default function Shell({ children }: { children: ReactNode }) {
             </button>
             {current && current.href !== '/admin' ? (
               <p className="flex min-w-0 items-center gap-2 text-sm">
-                {section?.pages && <span className="hidden text-ink-soft/50 sm:inline">{section.label}</span>}
-                {section?.pages && <span className="hidden text-ink-soft/30 sm:inline">/</span>}
+                {section?.pages && section.label !== current.label && <span className="hidden text-ink-soft/50 sm:inline">{section.label}</span>}
+                {section?.pages && section.label !== current.label && <span className="hidden text-ink-soft/30 sm:inline">/</span>}
                 <current.icon className="h-4 w-4 shrink-0 text-ink-soft/60" />
                 <b className="truncate text-ink">{current.label}</b>
               </p>

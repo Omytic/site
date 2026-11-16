@@ -5,7 +5,7 @@ import { Boxes, ChevronRight, ClipboardCheck, Percent, Pencil, Plus, SlidersHori
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { BRANDS, CHANNELS, colorOf, label, LOCATIONS, MOVEMENT_KINDS, productImage, SERIES, UNITS, type Brand, type LocationId } from '@/lib/panel/constants'
-import { AFTER, costFor, estimateStock, groupModels, invalidate, Q, useItemsWithStock, variantLabel, write, type ChannelCost, type ItemWithStock, type Model } from '@/lib/panel/data'
+import { AFTER, costFor, estimateStock, groupModels, invalidate, modelTitle, Q, useItemsWithStock, variantLabel, write, type ChannelCost, type ItemWithStock, type Model } from '@/lib/panel/data'
 import { addDays, dateTR, norm, num, pct, tl, today } from '@/lib/panel/format'
 import { coverDays, velocities } from '@/lib/panel/insights'
 import { HBars, ShareBar } from '@/components/panel/charts'
@@ -111,7 +111,7 @@ export default function StockPage() {
             parts={
               brand === 'all'
                 ? BRANDS.map((b) => ({ id: b.id, label: b.label, color: b.color, value: active.filter((i) => i.brand === b.id).reduce((a, i) => a + Math.max(0, i.total) * i.cost, 0) }))
-                : activeModels.slice(0, 6).map((m, k) => ({ id: m.key, label: m.name, color: SERIES[k], value: m.items.reduce((a, i) => a + Math.max(0, i.total) * i.cost, 0) }))
+                : activeModels.slice(0, 6).map((m, k) => ({ id: m.key, label: modelTitle(m), color: SERIES[k], value: m.items.reduce((a, i) => a + Math.max(0, i.total) * i.cost, 0) }))
             }
             format={(v) => tl(v)}
           />
@@ -175,9 +175,10 @@ export default function StockPage() {
                 </tr>
               }
             >
-              {models.map((m) => {
+              {models.flatMap((m) => {
+                if (m.brand === 'seryn') return m.items.map((i) => <ItemRow key={i.id} i={i} vel={vel} onAdjust={setAdjust} onEdit={setItemForm} />)
                 const grouped = m.items.length > 1
-                if (!grouped) return <ItemRow key={m.key} i={m.items[0]} vel={vel} onAdjust={setAdjust} onEdit={setItemForm} />
+                if (!grouped) return [<ItemRow key={m.key} i={m.items[0]} vel={vel} onAdjust={setAdjust} onEdit={setItemForm} />]
                 const isOpen = expanded.has(m.key) || !!q
                 const v = m.items.reduce((a, i) => a + (vel.get(i.id)?.total ?? 0), 0)
                 const days = coverDays(m.total, v)
@@ -308,9 +309,9 @@ function ItemRow({ i, vel, onAdjust, onEdit, child }: { i: ItemWithStock; vel: M
                           <span className="h-8 w-1 rounded-full" style={{ backgroundColor: colorOf(BRANDS, i.brand) }} />
                         )}
                         <div>
-                          <p className="font-semibold text-ink">{i.label}</p>
+                          <p className="font-semibold text-ink">{i.brand === 'seryn' ? i.variant || i.name : i.label}</p>
                           <p className="text-xs text-ink-soft/50">
-                            {label(BRANDS, i.brand)}
+                            {i.brand === 'seryn' ? i.name : label(BRANDS, i.brand)}
                             {i.sku ? ` · ${i.sku}` : ''}
                           </p>
                         </div>

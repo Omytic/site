@@ -23,6 +23,8 @@ interface AzItem {
   orderItemId: string
   quantityOrdered: number
   product?: { asin?: string; title?: string; sellerSku?: string; price?: { unitPrice?: Money } }
+  proceeds?: { proceedsTotal?: Money; breakdowns?: { type?: string; subtotal?: Money }[] }
+  promotion?: { breakdowns?: { promotionId?: string }[] }
 }
 interface AzOrder {
   orderId: string
@@ -69,6 +71,8 @@ async function fetchWindow(token: string, from: number, to: number, deadline: nu
       lastUpdatedBefore: new Date(to).toISOString(),
       fulfillmentStatuses: 'UNSHIPPED,PARTIALLY_SHIPPED,SHIPPED,CANCELLED',
       maxResultsPerPage: '100',
+      // FULFILLMENT: iptal ve FBA/FBM bilgisi · PROCEEDS: tutar ve indirim · PROMOTION: kampanya kodları
+      includedData: 'FULFILLMENT,PROCEEDS,PROMOTION',
     })
     if (next) q.set('paginationToken', next)
     const res = await fetch(`${ENDPOINT}/orders/2026-01-01/orders?${q}`, { headers: { 'x-amz-access-token': token, Accept: 'application/json' }, cache: 'no-store' })
@@ -127,13 +131,27 @@ export async function syncAmazon(db: SupabaseClient, opts: { days?: number } = {
       orderNo: o.orderId,
       saleDate: istanbulDate(new Date(o.createdTime).getTime()),
       status: statusOf(o),
-      lines: (o.orderItems ?? []).map((it) => ({
-        codes: [it.product?.sellerSku, it.product?.asin],
-        title: it.product?.title,
-        qty: it.quantityOrdered,
-        unitPrice: money(it.product?.price?.unitPrice),
-        location: o.fulfillment?.fulfilledBy === 'MERCHANT' ? ('depo' as const) : ('amazon' as const),
-      })),
+      lines: (o.orderItems ?? []).map((it) => {
+        const qty = Number(it.quantityOrdered) || 0
+        const list = money(it.product?.price?.unitPrice)
+        const bd = it.proceeds?.breakdowns ?? []
+        const itemTotal = bd.filter((b) => b.type === 'ITEM').reduce((a, b) => a + money(b.subtotal), 0)
+        // Satıcı kampanyası (bizim karşıladığımız). Amazon'un kendi yaptığı indirim bize yansımaz, tutarı değiştirmez.
+        const disc = Math.abs(bd.filter((b) => b.type === 'DISCOUNT').reduce((a, b) => a + money(b.subtotal), 0))
+        const promos = (it.promotion?.breakdowns ?? []).map((p) => p.promotionId).filter(Boolean)
+        const unitPrice = itemTotal > 0 && qty > 0 ? (itemTotal - disc) / qty : list
+        return {
+          codes: [it.product?.sellerSku, it.product?.asin],
+          title: it.product?.title,
+          qty,
+          unitPrice,
+          listPrice: itemTotal > 0 && qty > 0 ? itemTotal / qty : list || undefined,
+          discount: disc,
+          platformDiscount: 0,
+          campaign: promos.length ? promos.join(', ') : undefined,
+          location: o.fulfillment?.fulfilledBy === 'MERCHANT' ? ('depo' as const) : ('amazon' as const),
+        }
+      }),
     }))
 
   const result: SyncResult = { fetched: orders.size, imported: 0, updated: 0, linked: 0, skipped: 0, unmatched: [], from: new Date(from).toISOString(), to: new Date(reached).toISOString(), more }

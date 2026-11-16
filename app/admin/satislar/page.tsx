@@ -177,7 +177,22 @@ export default function SalesPage() {
                       )
                     })}
                   </td>
-                  <td className="text-right font-bold tabular-nums">{tl(total)}</td>
+                  <td className="text-right font-bold tabular-nums">
+                    {tl(total)}
+                    {(() => {
+                      const own = s.sale_items.reduce((a, l) => a + Number(l.discount ?? 0), 0)
+                      const plat = s.sale_items.reduce((a, l) => a + Number(l.platform_discount ?? 0), 0)
+                      const camp = s.sale_items.map((l) => l.campaign).find(Boolean)
+                      if (!(own > 0) && !(plat > 0)) return null
+                      return (
+                        <span className="mt-0.5 block text-[11px] font-semibold text-[#b26b00]" title={camp ?? undefined}>
+                          {own > 0 && `${tl(own)} bizim indirim`}
+                          {own > 0 && plat > 0 && ' · '}
+                          {plat > 0 && `${tl(plat)} ${label(CHANNELS, s.channel)} karşıladı`}
+                        </span>
+                      )
+                    })()}
+                  </td>
                   <td className="text-right tabular-nums text-ink-soft">{tl(net)}</td>
                   <td className="whitespace-nowrap">
                     <div className="flex flex-col items-start gap-1">

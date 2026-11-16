@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CHANNELS, label } from '@/lib/panel/constants'
-import { AFTER, costFor, groupModels, invalidate, write, type ChannelCost, type ItemWithStock, type Model } from '@/lib/panel/data'
+import { AFTER, costFor, groupModels, invalidate, modelTitle, write, type ChannelCost, type ItemWithStock, type Model } from '@/lib/panel/data'
 import { itemEconomics } from '@/lib/panel/economics'
 import { tl } from '@/lib/panel/format'
 import { Button, cx, Drawer, Input, Segmented, useUi } from './ui'
@@ -20,7 +20,7 @@ const COST_HINTS: Record<string, string> = {
 export function NetProfit({ model, costs, onSetup }: { model: Model; costs: ChannelCost[] | undefined; onSetup: () => void }) {
   const i = model.items[0]
   const rows = COST_CHANNELS.map((ch) => {
-    const c = costFor(costs, ch, model.name)
+    const c = costFor(costs, ch, modelTitle(model))
     if (!c) return null
     return { ch, e: itemEconomics(i, c, ch) }
   }).filter(Boolean) as { ch: string; e: ReturnType<typeof itemEconomics> }[]
@@ -121,7 +121,7 @@ export function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[];
           <span className="text-right">Net kâr/adet</span>
         </div>
         {[null, ...models].map((m) => {
-          const name = m ? m.name : null
+          const name = m ? modelTitle(m) : null
           const x = val(name)
           const eff = x.pct !== '' || x.fee !== '' ? x : name ? general : x
           const i = m?.items[0]
@@ -129,7 +129,7 @@ export function CostsDrawer({ items, costs, onClose }: { items: ItemWithStock[];
           return (
             <div key={name ?? 'all'} className={cx('grid grid-cols-[1fr_96px_112px_100px] items-center gap-2 border-t border-line px-3 py-2', !m && 'bg-[#FBFAF7]')}>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-ink">{m ? m.name : 'Bütün ürünler'}</p>
+                <p className="truncate text-sm font-semibold text-ink">{m ? modelTitle(m) : 'Bütün ürünler'}</p>
                 {m && <p className="text-xs text-ink-soft/50">{tl(m.items[0].price, true)} satış · {m.items[0].cost ? tl(m.items[0].cost, true) : 'maliyet yok'}</p>}
               </div>
               <Input type="number" min="0" max="99" step="any" className="h-9" value={x.pct} placeholder={m && general.pct !== '' ? general.pct : '0'} onChange={(e) => put(name, { pct: e.target.value })} />

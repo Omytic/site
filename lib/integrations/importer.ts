@@ -17,8 +17,17 @@ export interface NormLine {
   codes: (string | null | undefined)[]
   title?: string
   qty: number
+  /** Bize kalan birim fiyat (bizim indirimimiz düşülmüş, pazaryerinin karşıladığı indirim düşülmemiş) */
   unitPrice: number
   location: 'depo' | 'amazon'
+  /** İndirimsiz birim liste fiyatı */
+  listPrice?: number
+  /** Satırdaki toplam indirim: bizim karşıladığımız */
+  discount?: number
+  /** Satırdaki toplam indirim: pazaryerinin karşıladığı (bize maliyeti yok) */
+  platformDiscount?: number
+  /** Kampanya / promosyon adı ya da kodu */
+  campaign?: string
 }
 export interface NormOrder {
   ref: string
@@ -61,8 +70,8 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
   const label = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada', amazon: 'Amazon' }[channel]
 
   const [{ data: listings }, { data: items }, { data: costs }] = await Promise.all([
-    db.from('channel_listings').select('external_code,item_id').eq('channel', channel),
-    db.from('items').select('id,sku,name'),
+    db.from('channel_listings').select('external_code,item_id,components').eq('channel', channel),
+    db.from('items').select('id,sku,name,price'),
     db.from('channel_costs').select('model,commission_pct,fee_per_unit').eq('channel', channel),
   ])
   const nameOf = new Map<string, string>()
@@ -72,15 +81,42 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
     const n = nameOf.get(itemId)
     return (costs ?? []).find((c) => c.model && c.model.trim().toLocaleLowerCase('tr') === n) ?? (costs ?? []).find((c) => !c.model) ?? null
   }
-  const map = new Map<string, string>()
-  ;(items ?? []).forEach((i) => i.sku && map.set(i.sku.trim().toLowerCase(), i.id))
-  ;(listings ?? []).forEach((l) => map.set(l.external_code.trim().toLowerCase(), l.item_id))
+  // Kod → ürün(ler). Paket ilanlarda (ör. "2'li SERYN") bir kod birden çok ürün/adede açılır.
+  type Part = { item_id: string; qty: number }
+  const priceOf = new Map<string, number>()
+  ;(items ?? []).forEach((i) => priceOf.set(i.id, Number(i.price ?? 0)))
+  const map = new Map<string, Part[]>()
+  ;(items ?? []).forEach((i) => i.sku && map.set(i.sku.trim().toLowerCase(), [{ item_id: i.id, qty: 1 }]))
+  ;(listings ?? []).forEach((l) => {
+    const comps = Array.isArray(l.components) ? (l.components as Part[]).filter((c) => c?.item_id && Number(c.qty) > 0) : []
+    map.set(l.external_code.trim().toLowerCase(), comps.length ? comps.map((c) => ({ item_id: c.item_id, qty: Number(c.qty) })) : [{ item_id: l.item_id, qty: 1 }])
+  })
   const resolve = (l: NormLine) => {
     for (const c of l.codes) {
       const hit = c && map.get(c.trim().toLowerCase())
       if (hit) return hit
     }
     return null
+  }
+  /** Bir pazaryeri satırını panel satırlarına açar; tutar ve indirimler ürünlerin liste fiyatına göre paylaştırılır. */
+  const expand = (l: NormLine, parts: Part[]) => {
+    if (parts.length === 1 && parts[0].qty === 1) {
+      return [{ item: parts[0].item_id, qty: l.qty, unitPrice: l.unitPrice, listPrice: l.listPrice ?? null, discount: l.discount ?? 0, platformDiscount: l.platformDiscount ?? 0 }]
+    }
+    const weights = parts.map((p) => Math.max(0.01, priceOf.get(p.item_id) || 1) * p.qty)
+    const wsum = weights.reduce((a, b) => a + b, 0)
+    return parts.map((p, i) => {
+      const share = weights[i] / wsum
+      const qty = l.qty * p.qty
+      return {
+        item: p.item_id,
+        qty,
+        unitPrice: (l.unitPrice * l.qty * share) / qty,
+        listPrice: l.listPrice != null ? (l.listPrice * l.qty * share) / qty : null,
+        discount: (l.discount ?? 0) * share,
+        platformDiscount: (l.platformDiscount ?? 0) * share,
+      }
+    })
   }
 
   const refs = orders.map((o) => o.ref)
@@ -150,19 +186,21 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
       return
     }
     const raw = typeof o.lines === 'function' ? await o.lines() : o.lines
-    const lines = raw.filter((l) => l.qty > 0).map((l) => ({ l, item: resolve(l) }))
-    const missing = lines.filter((x) => !x.item)
-    if (!lines.length || missing.length) {
+    const matched = raw.filter((l) => l.qty > 0).map((l) => ({ l, parts: resolve(l) }))
+    const missing = matched.filter((x) => !x.parts)
+    if (!matched.length || missing.length) {
       missing.forEach(({ l }) => unmatched.set(l.codes.find(Boolean) || '?', { title: l.title ?? '', order: o.orderNo }))
       result.skipped++
       return
     }
+    const lines = matched.flatMap(({ l, parts }) => expand(l, parts!).map((x) => ({ l, ...x })))
     // Pazaryeri komisyonu vermiyorsa (Amazon) kanal maliyetindeki %; kargo / FBA ücreti adet başı tanımdan
     // Komisyon faturası KDV dahil yazılır: pazaryerleri oranı KDV hariç verir, faturaya %20 KDV eklenir
     let commission = (o.commission ?? 0) * 1.2
     let shipping = 0
-    if (!(commission > 0)) commission = lines.reduce((a, { l, item }) => a + (l.qty * l.unitPrice * Number(costOf(item!)?.commission_pct ?? 0) * 1.2) / 100, 0)
-    shipping = lines.reduce((a, { l, item }) => a + l.qty * Number(costOf(item!)?.fee_per_unit ?? 0), 0)
+    if (!(commission > 0)) commission = lines.reduce((a, x) => a + (x.qty * x.unitPrice * Number(costOf(x.item)?.commission_pct ?? 0) * 1.2) / 100, 0)
+    // Kargo / FBA ücreti pazaryeri satırı (paket) başına
+    shipping = matched.reduce((a, { l, parts }) => a + l.qty * Number(costOf(parts![0].item_id)?.fee_per_unit ?? 0), 0)
     const { data: sale, error } = await db
       .from('sales')
       .insert({
@@ -183,7 +221,17 @@ export async function importOrders(db: SupabaseClient, channel: MarketChannel, o
       throw new Error(error.message)
     }
     const { error: e2 } = await db.from('sale_items').insert(
-      lines.map(({ l, item }) => ({ sale_id: sale.id, item_id: item, qty: l.qty, unit_price: Math.round(l.unitPrice * 100) / 100, location_id: l.location })),
+      lines.map((x) => ({
+        sale_id: sale.id,
+        item_id: x.item,
+        qty: x.qty,
+        unit_price: Math.round(x.unitPrice * 100) / 100,
+        location_id: x.l.location,
+        list_price: x.listPrice != null ? Math.round(x.listPrice * 100) / 100 : null,
+        discount: Math.round(x.discount * 100) / 100,
+        platform_discount: Math.round(x.platformDiscount * 100) / 100,
+        campaign: x.l.campaign ?? null,
+      })),
     )
     if (e2) {
       // Yarım kalan kaydı geri al; silme tetikleyicisinin "bir daha alma" işaretini de kaldır.

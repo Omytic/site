@@ -22,6 +22,9 @@ interface TyLine {
   quantity: number
   lineUnitPrice?: number
   lineGrossAmount?: number
+  lineSellerDiscount?: number
+  lineTyDiscount?: number
+  discountDetails?: { lineItemPrice?: number; lineItemSellerDiscount?: number; lineItemTyDiscount?: number }[]
   commission?: number
 }
 interface TyPackage {
@@ -95,9 +98,33 @@ export async function syncTrendyol(db: SupabaseClient, opts: { days?: number } =
     saleDate: istanbulDate(p.orderDate),
     status: statusOf(p),
     commission: p.lines.reduce((a, l) => a + ((l.lineUnitPrice ?? 0) * l.quantity * (l.commission ?? 0)) / 100, 0),
-    lines: p.lines.map((l) => ({ codes: [l.barcode, l.stockCode], title: l.productName, qty: l.quantity, unitPrice: l.lineUnitPrice ?? l.lineGrossAmount ?? 0, location: 'depo' as const })),
+    lines: p.lines.map((l) => tyLine(l)),
   }))
   const result: SyncResult = { fetched: packages.size, imported: 0, updated: 0, linked: 0, skipped: 0, unmatched: [], from: new Date(from).toISOString(), to: new Date(now).toISOString() }
   await importOrders(db, 'trendyol', orders, result)
   return result
+}
+
+/**
+ * Trendyol satırı: lineGrossAmount indirimsiz birim fiyat; satıcı indirimi bizden, Trendyol indirimi Trendyol'dan çıkar.
+ * Bize kalan = brüt − satıcı indirimi (Trendyol'un karşıladığı indirim hakedişe eklenir).
+ */
+function tyLine(l: TyLine) {
+  const qty = Number(l.quantity) || 0
+  const det = l.discountDetails ?? []
+  const seller = det.length ? det.reduce((a, d) => a + Number(d.lineItemSellerDiscount ?? 0), 0) : Number(l.lineSellerDiscount ?? 0)
+  const ty = det.length ? det.reduce((a, d) => a + Number(d.lineItemTyDiscount ?? 0), 0) : Number(l.lineTyDiscount ?? 0)
+  const gross = l.lineGrossAmount != null ? Number(l.lineGrossAmount) : null
+  const unitPrice = gross != null && qty > 0 ? gross - seller / qty : Number(l.lineUnitPrice ?? 0)
+  return {
+    codes: [l.barcode, l.stockCode],
+    title: l.productName,
+    qty,
+    unitPrice,
+    listPrice: gross ?? undefined,
+    discount: seller,
+    platformDiscount: ty,
+    campaign: seller > 0 || ty > 0 ? 'Trendyol indirimi' : undefined,
+    location: 'depo' as const,
+  }
 }

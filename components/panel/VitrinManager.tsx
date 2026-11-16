@@ -27,7 +27,7 @@ interface Product {
 type ViewMode = 'dashboard' | 'products' | 'add' | 'settings'
 type ProductViewMode = 'grid' | 'table'
 
-export default function VitrinManager() {
+export default function VitrinManager({ page = 'vitrin' }: { page?: 'vitrin' | 'settings' }) {
   const router = useRouter()
   const [isAuthenticated] = useState(true)
   const [isCheckingAuth] = useState(false)
@@ -37,7 +37,7 @@ export default function VitrinManager() {
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>('products')
+  const [viewMode, setViewMode] = useState<ViewMode>(page === 'settings' ? 'settings' : 'products')
   const [productViewMode, setProductViewMode] = useState<ProductViewMode>('grid')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -424,11 +424,13 @@ export default function VitrinManager() {
       <main>
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="font-display text-3xl font-black tracking-tight text-ink sm:text-4xl">Vitrin</h1>
-            <p className="mt-1.5 text-[15px] text-ink-soft/70">omytic.com'daki kumaş vitrini ve site ayarları · {filteredProducts.length} ürün</p>
+            <h1 className="font-display text-3xl font-black tracking-tight text-ink sm:text-4xl">{page === 'settings' ? 'Site ayarları' : 'Site Vitrini'}</h1>
+            <p className="mt-1.5 text-[15px] text-ink-soft/70">
+              {page === 'settings' ? 'Telefon, duyuru ve arama sonucu metinleri.' : `omytic.com'daki kumaş vitrini · ${filteredProducts.length} ürün`}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {([['dashboard', 'Özet'], ['products', 'Ürün listesi'], ['settings', 'Site ayarları']] as const).map(([id, label]) => (
+            {(page === 'settings' ? [] : ([['dashboard', 'Özet'], ['products', 'Ürün listesi']] as const)).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => setViewMode(id)}

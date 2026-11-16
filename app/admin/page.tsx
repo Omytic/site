@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Circle, Info, Lightbulb, PackageSearch, Sparkles, TrendingDown, TrendingUp, Truck, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarClock, CalendarDays, Inbox, CheckCircle2, Circle, Info, Lightbulb, PackageSearch, Sparkles, TrendingDown, TrendingUp, Truck, Wallet } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { BRANDS, CHANNELS, SERIES, TABLE_LABELS } from '@/lib/panel/constants'
@@ -40,6 +40,8 @@ export default function Overview() {
   const audit = Q.audit(40)
   const itemsQ = Q.items()
   const movements = Q.movements()
+  const fairs = Q.fairs()
+  const leads = Q.leads()
   const channelCosts = Q.channelCosts()
   const unmatched = useQuery('sync_unmatched', async () => {
     const { data, error } = await supabase.from('sync_unmatched').select('*').order('last_seen', { ascending: false })
@@ -108,7 +110,7 @@ export default function Overview() {
 
   // Ajanda: yaklaşan 14 gün
   const agenda = useMemo(() => {
-    const out: { date: string; kind: 'task' | 'pay' | 'ship'; text: string; sub?: string; href: string; late?: boolean }[] = []
+    const out: { date: string; kind: 'task' | 'pay' | 'ship' | 'fair' | 'lead'; text: string; sub?: string; href: string; late?: boolean }[] = []
     ;(tasks.data ?? [])
       .filter((x) => x.status !== 'bitti' && x.due_date && x.due_date <= addDays(t, 14))
       .forEach((x) => out.push({ date: x.due_date!, kind: 'task', text: x.title, sub: byId(x.assignee)?.full_name, href: '/admin/isler', late: x.due_date! < t }))
@@ -127,8 +129,18 @@ export default function Overview() {
     ;(shipments.data ?? [])
       .filter((s) => s.status === 'yolda')
       .forEach((s) => out.push({ date: s.ship_date, kind: 'ship', text: `${s.reference || 'Sevkiyat'} yolda`, sub: `${s.shipment_items.reduce((a, l) => a + Number(l.qty), 0)} adet · ${daysBetween(s.ship_date, t)} gündür`, href: '/admin/sevkiyat' }))
-    return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8)
-  }, [tasks.data, ledger.data, shipments.data, t, byId])
+    // Talepler: cevap bekleyen yeniler ve arama günü gelenler
+    ;(leads.data ?? [])
+      .filter((l) => l.status === 'yeni' || (['gorusuldu', 'teklif', 'numune'].includes(l.status) && l.next_date && l.next_date <= addDays(t, 14)))
+      .forEach((l) =>
+        out.push({ date: l.status === 'yeni' ? l.created_at.slice(0, 10) : l.next_date!, kind: 'lead', text: `${l.status === 'yeni' ? 'Yeni talep' : 'Ara'}: ${l.company || l.name}`, sub: l.message?.slice(0, 60) ?? undefined, href: '/admin/talepler', late: l.status !== 'yeni' && l.next_date! < t }),
+      )
+    // Takip ettiğimiz ya da çok uygun fuarlar, 45 gün kala
+    ;(fairs.data ?? [])
+      .filter((f) => f.end_date >= t && f.start_date <= addDays(t, 45) && f.status !== 'gecildi' && (f.priority === 'yuksek' || f.status !== 'izle'))
+      .forEach((f) => out.push({ date: f.start_date, kind: 'fair', text: f.name, sub: [f.city, f.status === 'izle' ? 'karar verilmedi' : null].filter(Boolean).join(' · '), href: '/admin/fuarlar' }))
+    return out.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 10)
+  }, [tasks.data, ledger.data, shipments.data, fairs.data, leads.data, t, byId])
 
   // --- Tahminler ---
   const weeks = useMemo(() => weeklySeries(lines.data ?? [], 16), [lines.data])
@@ -446,8 +458,8 @@ export default function Overview() {
                       <span className="block font-display text-lg font-black leading-none">{new Date(a.date + 'T00:00:00').getDate()}</span>
                       <span className="block text-[11px] text-ink-soft/60">{new Date(a.date + 'T00:00:00').toLocaleDateString('tr-TR', { month: 'short' })}</span>
                     </span>
-                    <span className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', a.kind === 'task' ? 'bg-thread/15 text-thread-deep' : a.kind === 'pay' ? 'bg-[#2a78d6]/10 text-[#1c5cab]' : 'bg-[#1baf7a]/12 text-[#0f7a54]')}>
-                      {a.kind === 'task' ? <CheckCircle2 className="h-4 w-4" /> : a.kind === 'pay' ? <Wallet className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
+                    <span className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', a.kind === 'task' ? 'bg-thread/15 text-thread-deep' : a.kind === 'pay' ? 'bg-[#2a78d6]/10 text-[#1c5cab]' : a.kind === 'fair' ? 'bg-[#E3AB3B]/20 text-[#8a5a00]' : a.kind === 'lead' ? 'bg-[#7a3aa8]/10 text-[#7a3aa8]' : 'bg-[#1baf7a]/12 text-[#0f7a54]')}>
+                      {a.kind === 'task' ? <CheckCircle2 className="h-4 w-4" /> : a.kind === 'pay' ? <Wallet className="h-4 w-4" /> : a.kind === 'fair' ? <CalendarDays className="h-4 w-4" /> : a.kind === 'lead' ? <Inbox className="h-4 w-4" /> : <Truck className="h-4 w-4" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink">{a.text}</span>
