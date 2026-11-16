@@ -65,9 +65,9 @@ function LoginForm() {
   }
 
   useEffect(() => {
-    run(next, true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // YEREL ÖNİZLEME: giriş ekranı kapalı.
+    router.replace('/admin')
+  }, [router])
 
   const submitPassword = (e: React.FormEvent) => {
     e.preventDefault()

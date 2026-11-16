@@ -15,6 +15,15 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null)
 
+// YEREL ÖNİZLEME: giriş kapalı.
+const LOCAL_PANEL = true
+const LOCAL_ME: Profile = {
+  id: '00000000-0000-0000-0000-000000000001',
+  username: 'omer',
+  full_name: 'Ömer',
+  color: '#C4A574',
+}
+
 export const usernameToEmail = (u: string) => {
   const clean = u
     .trim()
@@ -35,6 +44,28 @@ export function PanelAuth({ children, fallback }: { children: ReactNode; fallbac
 
   useEffect(() => {
     let alive = true
+    if (LOCAL_PANEL) {
+      const boot = async () => {
+        const email = process.env.NEXT_PUBLIC_LOCAL_PANEL_EMAIL
+        const password = process.env.NEXT_PUBLIC_LOCAL_PANEL_PASSWORD
+        let session = (await supabase.auth.getSession()).data.session
+        if (!session && email && password) {
+          const { data } = await supabase.auth.signInWithPassword({ email, password })
+          session = data.session
+        }
+        if (!session) {
+          if (alive) setState({ me: LOCAL_ME, profiles: [LOCAL_ME] })
+          return
+        }
+        const { data: profiles } = await supabase.from('profiles').select('id,username,full_name,color').order('username')
+        if (!alive) return
+        const list = (profiles ?? []) as Profile[]
+        const me = list.find((p) => p.id === session!.user.id) ?? LOCAL_ME
+        setState({ me, profiles: list.length ? list : [me] })
+      }
+      boot()
+      return
+    }
     const load = async () => {
       const { data } = await supabase.auth.getSession()
       const user = data.session?.user
