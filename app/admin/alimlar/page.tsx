@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { BRANDS } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useItemsWithStock, write, type Purchase } from '@/lib/panel/data'
-import { dateTR, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
+import { dateTR, lastMonths, money, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend } from '@/components/panel/charts'
 import { LinesSummary } from '@/components/panel/LinesSummary'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { CurrencyBar } from '@/components/panel/CurrencyBar'
+import { useFxRate, type Currency } from '@/lib/panel/fx'
 import { Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
 
 const purchaseTotal = (p: Purchase) => p.purchase_items.reduce((a, l) => a + Number(l.qty) * Number(l.unit_cost), 0)
@@ -138,6 +140,11 @@ export default function PurchasesPage() {
                     </td>
                     <td className="text-right font-bold tabular-nums">
                       {tl(purchaseTotal(p))}
+                      {p.currency && p.currency !== 'TRY' && (
+                        <p className="text-xs font-semibold text-[#1d5fb0]">
+                          {money(p.purchase_items.reduce((a, l) => a + Number(l.qty) * Number(l.fx_unit_cost ?? 0), 0), p.currency)} · kur {Number(p.fx_rate).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                        </p>
+                      )}
                       {Number(p.shipping_cost) > 0 && <p className="text-xs font-normal text-ink-soft/60">+ {tl(p.shipping_cost)} kargo</p>}
                     </td>
                     <td>
@@ -184,19 +191,36 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
     due_date: purchase?.due_date ?? '',
     note: purchase?.note ?? '',
   })
+  // Para birimi: dolar/euro seçilirse fiyatlar o dövizde girilir, alım tarihinin TCMB kuruyla TL'ye çevrilir
+  const [currency, setCurrencyRaw] = useState<Currency>((purchase?.currency as Currency) ?? 'TRY')
+  const fx = useFxRate(currency, f.purchase_date, 'selling', purchase?.fx_rate ?? null)
   const [rawLines, setLines] = useState<Line[]>(
-    purchase?.purchase_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: String(l.unit_cost), location_id: l.location_id })) ?? [emptyLine()],
+    purchase?.purchase_items.map((l) => ({
+      item_id: l.item_id,
+      qty: String(l.qty),
+      price: String(purchase.currency && purchase.currency !== 'TRY' && l.fx_unit_cost != null ? Number(l.fx_unit_cost) : l.unit_cost),
+      location_id: l.location_id,
+    })) ?? [emptyLine()],
   )
+  const setCurrency = (c: Currency) => {
+    if (c === currency) return
+    setCurrencyRaw(c)
+    // Fiyatlar yeni para biriminde ürün kartından yeniden gelsin
+    setLines(rawLines.map((l) => ({ ...l, price: '' })))
+  }
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
-  const total = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0) + (Number(f.shipping_cost) || 0)
+  const goods = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const goodsTL = goods * fx.rate
+  const total = goodsTL + (Number(f.shipping_cost) || 0)
   // Ürün kartındaki KDV oranıyla (maliyetler KDV hariç tutulur)
-  const vat = rawLines.reduce((a, l) => a + ((Number(l.qty) || 0) * (Number(l.price) || 0) * Number(items.find((i) => i.id === l.item_id)?.vat_rate ?? 20)) / 100, 0)
+  const vat = rawLines.reduce((a, l) => a + ((Number(l.qty) || 0) * (Number(l.price) || 0) * fx.rate * Number(items.find((i) => i.id === l.item_id)?.vat_rate ?? 20)) / 100, 0)
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     const lines = realLines(rawLines)
     if (!lines.length) return toast('En az bir ürün için adet girin.', 'error')
+    if (currency !== 'TRY' && !(fx.rate > 0)) return toast('Kur yok. Kuru elle girin.', 'error')
     setBusy(true)
     try {
       await write(
@@ -209,8 +233,17 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
             note: f.note || null,
             shipping_cost: Number(f.shipping_cost) || 0,
             due_date: f.payment_status === 'bekliyor' && f.due_date ? f.due_date : null,
+            currency,
+            fx_rate: currency === 'TRY' ? null : fx.rate,
           },
-          p_lines: lines.map((l) => ({ item_id: l.item_id, qty: Number(l.qty), unit_cost: Number(l.price) || 0, location_id: l.location_id ?? 'depo' })),
+          p_lines: lines.map((l) => ({
+            item_id: l.item_id,
+            qty: Number(l.qty),
+            // Maliyet her zaman TL saklanır (alım günü kuruyla); döviz tutarı ayrıca
+            unit_cost: Math.round((Number(l.price) || 0) * fx.rate * 100) / 100,
+            fx_unit_cost: currency === 'TRY' ? null : Number(l.price) || 0,
+            location_id: l.location_id ?? 'depo',
+          })),
         }),
       )
       invalidate(...AFTER.purchase)
@@ -232,7 +265,8 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
       footer={
         <>
           <p className="mr-auto text-sm text-ink-soft">
-            Toplam <b className="font-display text-lg font-black text-ink">{tl(total)}</b>
+            {currency !== 'TRY' && <span className="mr-2">{money(goods, currency)} ×{' '}{fx.rate.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} =</span>}
+            Toplam <b className="font-display text-lg font-black text-ink">{money(total, 'TRY', false)}</b>
             {vat > 0 && <span className="ml-2 text-xs">+ {tl(vat)} KDV = <b className="text-ink">{tl(total + vat)}</b></span>}
           </p>
           <Button variant="secondary" onClick={onClose}>
@@ -259,9 +293,10 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
             <Input type="number" min="0" step="any" value={f.shipping_cost} onChange={(e) => set({ shipping_cost: e.target.value })} placeholder="0" />
           </Field>
         </div>
+        <CurrencyBar currency={currency} setCurrency={setCurrency} fx={fx} hint="Maliyetler bu kurla TL'ye çevrilip kaydedilir." />
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Gelen ürünler</p>
-          <LinesEditor items={items} lines={rawLines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation priceFromCard allowNew />
+          <LinesEditor key={currency} items={items} lines={rawLines} setLines={setLines} priceFrom="cost" priceLabel="Birim maliyet" showLocation priceFromCard allowNew currency={currency} rate={fx.rate} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Ödeme">

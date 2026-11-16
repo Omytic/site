@@ -12,11 +12,13 @@ export interface Profile { id: string; username: string; full_name: string; colo
 export interface Item {
   id: string; sku: string | null; name: string; brand: Brand; variant: string | null; color?: string | null; unit: Unit
   vat_rate?: number; cost: number; price: number; min_stock: number; active: boolean; notes: string | null; created_at: string
+  /** Ürün dövizle alınıp satılıyorsa: para birimi, döviz satış fiyatı ve son döviz maliyeti */
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_price?: number | null; fx_cost?: number | null
 }
 export interface StockLevel { item_id: string; location_id: LocationId; qty: number }
 export interface SaleItem {
   id?: string; item_id: string; qty: number; unit_price: number; unit_cost?: number | null; location_id?: LocationId
-  list_price?: number | null; discount?: number; platform_discount?: number; campaign?: string | null
+  list_price?: number | null; discount?: number; platform_discount?: number; campaign?: string | null; fx_unit_price?: number | null
 }
 export interface Sale {
   id: string; sale_date: string; channel: Channel; order_no: string | null; customer: string | null
@@ -24,12 +26,14 @@ export interface Sale {
   payment_status: 'odendi' | 'bekliyor'; due_date: string | null; note: string | null
   created_at: string; created_by: string | null; sale_items: SaleItem[]
   external_ref?: string | null; updated_at?: string; updated_by?: string | null
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null
 }
-export interface PurchaseItem { id?: string; item_id: string; qty: number; unit_cost: number; location_id?: LocationId }
+export interface PurchaseItem { id?: string; item_id: string; qty: number; unit_cost: number; location_id?: LocationId; fx_unit_cost?: number | null }
 export interface Purchase {
   id: string; purchase_date: string; supplier: string | null; invoice_no: string | null; shipping_cost: number
   payment_status: 'odendi' | 'bekliyor'; due_date: string | null; note: string | null
   created_at: string; created_by: string | null; purchase_items: PurchaseItem[]
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null
 }
 export interface ShipmentItem { id?: string; item_id: string; qty: number }
 export interface Shipment {
@@ -51,6 +55,7 @@ export interface Transaction {
   id: string; tx_date: string; direction: 'gelir' | 'gider'; category: string; amount: number; brand: BrandOrGenel
   channel: string | null; counterparty: string | null; payment_status: 'odendi' | 'bekliyor'; due_date: string | null
   note: string | null; created_at: string; created_by: string | null; fair_id?: string | null
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null; fx_amount?: number | null
 }
 export interface SaleLine {
   sale_id: string; sale_date: string; channel: Channel; status: string; item_id: string; brand: Brand
@@ -213,6 +218,9 @@ export const Q = {
   adBudgets: () => useQuery('ad_budgets', () => must<AdBudget[]>(supabase.from('ad_budgets').select('*').order('month', { ascending: false }))),
   adSpend: () => useQuery('ad_spend', () => all<AdSpend>((a, b) => supabase.from('ad_spend').select('*').order('spend_date', { ascending: false }).range(a, b))),
   tasks: () => useQuery('tasks', () => must<Task[]>(supabase.from('tasks').select('*').order('created_at', { ascending: false }))),
+  /** Son TCMB kurları (görüntüleme para birimi için) */
+  fxLatest: () =>
+    useQuery('fx_latest', () => must<{ rate_date: string; currency: string; buying: number; selling: number }[]>(supabase.from('fx_rates').select('rate_date,currency,buying,selling').order('rate_date', { ascending: false }).limit(10))),
   fairItems: () => useQuery('fair_items', () => must<FairItem[]>(supabase.from('fair_items').select('*'))),
   collabs: () =>
     useQuery('collaborations', () => must<Collab[]>(supabase.from('collaborations').select('*, collab_items(*)').order('created_at', { ascending: false }))),

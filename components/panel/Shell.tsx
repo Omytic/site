@@ -22,51 +22,67 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
 import { passwordProblem } from '@/lib/panel/security'
+import { fetchRate, CURRENCIES, type Currency } from '@/lib/panel/fx'
+import { money, setDisplayCurrency, today } from '@/lib/panel/format'
 import { Button, cx, Drawer, Field, Input, useUi } from './ui'
 
 type NavPage = { href: string; label: string; icon: typeof Boxes; hint?: string }
 type NavSection = NavPage & { pages?: NavPage[] }
 
-// Birbirine yakın sayfalar bölümün içinde sekme olarak durur.
+// Sol menü: açılır gruplar. Grubun sayfaları menüde alt satır, sayfanın üstünde de sekme olarak durur.
 const NAV: NavSection[] = [
   { href: '/admin', label: 'Genel bakış', icon: LayoutDashboard },
-  { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag },
-  { href: '/admin/talepler', label: 'Talepler', icon: Inbox },
-  { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus },
-  { href: '/admin/stok', label: 'Stok', icon: Boxes },
-  { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag },
-  { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator },
-  { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck },
+  {
+    href: '/admin/satislar',
+    label: 'Ürün ve satış',
+    icon: ShoppingBag,
+    pages: [
+      { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag, hint: 'Bütün kanallardan satışlar' },
+      { href: '/admin/talepler', label: 'Talepler', icon: Inbox, hint: 'Teklif, numune, müşteri adayları' },
+      { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus, hint: 'Mal alımları ve maliyet' },
+      { href: '/admin/stok', label: 'Stok', icon: Boxes, hint: 'Depo, yolda, Amazon' },
+      { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag, hint: 'Fiyat, maliyet, varyantlar' },
+      { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck, hint: 'FBA gönderileri' },
+    ],
+  },
   {
     href: '/admin/finans',
     label: 'Finans',
     icon: Wallet,
     pages: [
-      { href: '/admin/finans', label: 'Finans', icon: Wallet, hint: 'Gelir, gider, alacak, borç' },
-      { href: '/admin/reklam', label: 'Reklam', icon: Megaphone, hint: 'Harcama ve bütçe' },
+      { href: '/admin/finans', label: 'Muhasebe', icon: Wallet, hint: 'Gelir, gider, alacak, borç' },
+      { href: '/admin/kar-hesabi', label: 'Kâr ve KDV hesabı', icon: Calculator, hint: 'Bir adet satışta ne kalıyor' },
       { href: '/admin/faturalar', label: 'Faturalar', icon: FileText, hint: 'Kesilen ve alınan faturalar' },
+      { href: '/admin/reklam', label: 'Reklam', icon: Megaphone, hint: 'Harcama ve bütçe' },
     ],
   },
   {
     href: '/admin/isler',
-    label: 'Ekip',
-    icon: ListChecks,
+    label: 'Ekip ve pazarlama',
+    icon: Users,
     pages: [
-      { href: '/admin/isler', label: 'İşler', icon: ListChecks, hint: 'Yapılacaklar' },
+      { href: '/admin/isler', label: 'Ekip işleri', icon: ListChecks, hint: 'Yapılacaklar' },
+      { href: '/admin/fuarlar', label: 'Fuarlar', icon: CalendarDays, hint: 'Fuar takvimi ve fuar kasası' },
+      { href: '/admin/isbirlikleri', label: 'İş birlikleri', icon: Handshake, hint: 'Influencer ve ortak işler' },
+      { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe, hint: 'Hesaplar, alan adları' },
+    ],
+  },
+  {
+    href: '/admin/entegrasyonlar',
+    label: 'Genel ayarlar',
+    icon: Settings,
+    pages: [
+      { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug, hint: 'Trendyol, Amazon bağlantıları' },
+      { href: '/admin/vitrin', label: 'Site vitrini', icon: Store, hint: 'Sitede görünen ürünler' },
+      { href: '/admin/site-ayarlari', label: 'Site ayarları', icon: Settings, hint: 'İletişim, metinler' },
       { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History, hint: 'Kim neyi değiştirdi' },
     ],
   },
-  { href: '/admin/fuarlar', label: 'Fuarlar', icon: CalendarDays },
-  { href: '/admin/isbirlikleri', label: 'İş birlikleri', icon: Handshake },
-  { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe },
-  { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug },
-  { href: '/admin/vitrin', label: 'Site Vitrini', icon: Store },
-  { href: '/admin/site-ayarlari', label: 'Site ayarları', icon: Settings },
 ]
 const matches = (href: string, path: string | null) => (href === '/admin' ? path === '/admin' : !!path?.startsWith(href))
 const sectionOf = (path: string | null) => NAV.find((s) => (s.pages ?? [s]).some((p) => matches(p.href, path)))
@@ -81,7 +97,7 @@ function SectionTabs() {
   const s = sectionOf(path)
   if (!s?.pages) return null
   return (
-    <div className="-mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0 [scrollbar-width:none]">
+    <div className="-mx-4 mb-5 overflow-x-auto px-4 sm:mx-0 sm:px-0 lg:hidden [scrollbar-width:none]">
       <div className="inline-flex gap-1 rounded-2xl bg-white p-1 ring-1 ring-black/[0.06]">
         {s.pages.map((p) => {
           const active = matches(p.href, path)
@@ -140,32 +156,83 @@ function Mark() {
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname()
   const current = sectionOf(path)
+  // Açık gruplar: bulunulan sayfanın grubu hep açık; diğerleri tıklayınca açılıp kapanır (hatırlanır)
+  const [open, setOpen] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('omy_nav_open') ?? '[]')
+      if (Array.isArray(saved)) setOpen(saved)
+    } catch {}
+  }, [])
+  useEffect(() => {
+    if (current?.pages && !open.includes(current.label)) setOpen((o) => [...o, current.label])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.label])
+  const toggle = (k: string) =>
+    setOpen((o) => {
+      const n = o.includes(k) ? o.filter((x) => x !== k) : [...o, k]
+      try {
+        localStorage.setItem('omy_nav_open', JSON.stringify(n))
+      } catch {}
+      return n
+    })
+  const row = (active: boolean) =>
+    cx('relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-colors', active ? 'text-white' : 'text-white/60 hover:bg-white/[0.04] hover:text-white')
   return (
     <nav>
-      <ul className="space-y-0.5">
+      <ul className="space-y-1">
         {NAV.map((it) => {
-          const active = current === it
+          if (!it.pages) {
+            const active = current === it
+            return (
+              <li key={it.href}>
+                <Link href={it.href} onClick={onNavigate} className={cx(row(active), active && 'bg-white/[0.08] ring-1 ring-inset ring-white/10')}>
+                  {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
+                  <it.icon className={cx('h-[18px] w-[18px]', active && 'text-thread')} />
+                  <span>{it.label}</span>
+                </Link>
+              </li>
+            )
+          }
+          const isOpen = open.includes(it.label)
+          const here = current === it
           return (
-            <li key={it.href}>
-              <Link
-                href={it.href}
-                onClick={onNavigate}
-                className={cx(
-                  'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-colors',
-                  active ? 'text-white' : 'text-white/55 hover:bg-white/[0.04] hover:text-white',
+            <li key={it.label}>
+              <button type="button" onClick={() => toggle(it.label)} aria-expanded={isOpen} className={row(here)}>
+                <it.icon className={cx('h-[18px] w-[18px]', here && 'text-thread')} />
+                <span className="flex-1 text-left">{it.label}</span>
+                <ChevronDown className={cx('h-4 w-4 text-white/40 transition-transform', isOpen && 'rotate-180')} />
+              </button>
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.ul
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="ml-[21px] overflow-hidden border-l border-white/[0.08] pl-2"
+                  >
+                    {it.pages.map((p) => {
+                      const active = matches(p.href, path)
+                      return (
+                        <li key={p.href}>
+                          <Link
+                            href={p.href}
+                            onClick={onNavigate}
+                            className={cx(
+                              'relative my-0.5 flex items-center rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors',
+                              active ? 'bg-white/[0.08] font-semibold text-white' : 'text-white/50 hover:bg-white/[0.04] hover:text-white',
+                            )}
+                          >
+                            {active && <span className="absolute -left-[9px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
+                            {p.label}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </motion.ul>
                 )}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="nav-active"
-                    className="absolute inset-0 rounded-xl bg-white/[0.08] ring-1 ring-inset ring-white/10"
-                    transition={{ type: 'spring', stiffness: 500, damping: 40 }}
-                  />
-                )}
-                {active && <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-thread" />}
-                <it.icon className={cx('relative h-[18px] w-[18px]', active ? 'text-thread' : '')} />
-                <span className="relative">{it.label}</span>
-              </Link>
+              </AnimatePresence>
             </li>
           )
         })}
@@ -299,11 +366,80 @@ function QuickAdd() {
   )
 }
 
+/** Panelin tamamında tutarları ₺, $ ya da € olarak göster (kayıtlar TL kalır, son TCMB kuruyla çevrilir). */
+function useDisplayCurrency() {
+  const [cur, setCur] = useState<Currency>('TRY')
+  const [rate, setRate] = useState(0)
+  const [ver, setVer] = useState(0)
+  const [err, setErr] = useState('')
+  const apply = (c: Currency) => {
+    setErr('')
+    try {
+      localStorage.setItem('omy_display_cur', c)
+    } catch {}
+    if (c === 'TRY') {
+      setDisplayCurrency('TRY', 1)
+      setCur('TRY')
+      setRate(0)
+      setVer((v) => v + 1)
+      return
+    }
+    fetchRate(today())
+      .then((r) => {
+        const x = r.rates[c as 'USD' | 'EUR']?.selling ?? 0
+        if (!(x > 0)) throw new Error('Kur yok')
+        setDisplayCurrency(c, x)
+        setCur(c)
+        setRate(x)
+        setVer((v) => v + 1)
+      })
+      .catch(() => {
+        setDisplayCurrency('TRY', 1)
+        setCur('TRY')
+        setErr('Kur alınamadı, TL gösteriliyor')
+      })
+  }
+  useEffect(() => {
+    let saved: string | null = null
+    try {
+      saved = localStorage.getItem('omy_display_cur')
+    } catch {}
+    if (saved === 'USD' || saved === 'EUR') apply(saved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return { cur, rate, ver, err, apply }
+}
+
+function DisplayToggle({ d }: { d: ReturnType<typeof useDisplayCurrency> }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex rounded-xl bg-white p-0.5 ring-1 ring-line" role="radiogroup" aria-label="Tutarları göster">
+        {CURRENCIES.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="radio"
+            aria-checked={d.cur === c.id}
+            onClick={() => d.apply(c.id)}
+            title={c.id === 'TRY' ? 'Tutarları TL göster' : `Tutarları ${c.label.toLowerCase()} göster (son TCMB kuru)`}
+            className={cx('h-8 w-8 rounded-[10px] text-sm font-black transition', d.cur === c.id ? 'bg-night text-white' : 'text-ink-soft/70 hover:text-ink')}
+          >
+            {c.sym}
+          </button>
+        ))}
+      </div>
+      {d.cur !== 'TRY' && d.rate > 0 && <span className="hidden text-[11px] font-semibold text-ink-soft/60 md:inline">1 {d.cur === 'USD' ? '$' : '€'} = {money(d.rate, 'TRY')}</span>}
+      {d.err && <span className="hidden text-[11px] font-semibold text-[#b83030] md:inline">{d.err}</span>}
+    </div>
+  )
+}
+
 export default function Shell({ children }: { children: ReactNode }) {
   const { me, signOut } = useAuth()
   const [mobile, setMobile] = useState(false)
   const [account, setAccount] = useState(false)
   const path = usePathname()
+  const disp = useDisplayCurrency()
   useEffect(() => setMobile(false), [path])
 
   const userCard = (
@@ -390,7 +526,8 @@ export default function Shell({ children }: { children: ReactNode }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => invalidate()} title="Verileri yenile">
+            <DisplayToggle d={disp} />
+            <Button variant="ghost" size="sm" onClick={() => invalidate()} title="Verileri yenile" className="hidden sm:inline-flex">
               Yenile
             </Button>
             <QuickAdd />
@@ -398,7 +535,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         </header>
         <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-8">
           <SectionTabs />
-          {children}
+          <div key={disp.ver}>{children}</div>
         </main>
       </div>
 
@@ -406,7 +543,9 @@ export default function Shell({ children }: { children: ReactNode }) {
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.06] bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Ana sayfalar">
         <ul className="mx-auto grid max-w-md grid-cols-5">
           {TABS.map((t) => {
-            const active = t.href === '/admin' ? path === '/admin' : sectionOf(path)?.href === t.href
+            // Önce sayfanın kendisi; sekmesi olmayan sayfada (ör. Kâr ve KDV hesabı) grubunun sekmesi
+            const exact = TABS.find((x) => matches(x.href, path))
+            const active = exact ? exact.href === t.href : t.href !== '/admin/satislar' && sectionOf(path)?.href === t.href
             return (
               <li key={t.href}>
                 <Link href={t.href} className={cx('flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold', active ? 'text-ink' : 'text-ink-soft/50')}>

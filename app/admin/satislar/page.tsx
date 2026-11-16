@@ -6,9 +6,11 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { CHANNELS, colorOf, label, PAYMENT_STATUS, productImage, SALE_STATUS, type Channel } from '@/lib/panel/constants'
 import { AFTER, estimateCosts, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
-import { addDays, dateTimeTR, dateTR, relTime, lastMonths, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
+import { addDays, dateTimeTR, dateTR, relTime, lastMonths, money, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { CurrencyBar } from '@/components/panel/CurrencyBar'
+import { useFxRate, type Currency } from '@/lib/panel/fx'
 import { Badge, Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useShowMore, useUi } from '@/components/panel/ui'
 
 type Range = '30' | '90' | '365' | 'all'
@@ -179,6 +181,11 @@ export default function SalesPage() {
                   </td>
                   <td className="text-right font-bold tabular-nums">
                     {tl(total)}
+                    {s.currency && s.currency !== 'TRY' && (
+                      <span className="mt-0.5 block text-[11px] font-semibold text-[#1d5fb0]">
+                        {money(s.sale_items.reduce((a, l) => a + Number(l.qty) * Number(l.fx_unit_price ?? 0), 0), s.currency)} · kur {Number(s.fx_rate).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}
+                      </span>
+                    )}
                     {(() => {
                       const own = s.sale_items.reduce((a, l) => a + Number(l.discount ?? 0), 0)
                       const plat = s.sale_items.reduce((a, l) => a + Number(l.platform_discount ?? 0), 0)
@@ -254,13 +261,27 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
     due_date: sale?.due_date ?? '',
     note: sale?.note ?? '',
   })
+  // Para birimi: dolar/euro ile satışta fiyat o dövizde girilir, satış gününün TCMB döviz alış kuruyla TL'ye çevrilir
+  const [currency, setCurrencyRaw] = useState<Currency>((sale?.currency as Currency) ?? 'TRY')
+  const fx = useFxRate(currency, f.sale_date, 'buying', sale?.fx_rate ?? null)
   const [rawLines, setLines] = useState<Line[]>(
-    sale?.sale_items.map((l) => ({ item_id: l.item_id, qty: String(l.qty), price: String(l.unit_price), location_id: l.location_id })) ?? [emptyLine()],
+    sale?.sale_items.map((l) => ({
+      item_id: l.item_id,
+      qty: String(l.qty),
+      price: String(sale.currency && sale.currency !== 'TRY' && l.fx_unit_price != null ? Number(l.fx_unit_price) : l.unit_price),
+      location_id: l.location_id,
+    })) ?? [emptyLine()],
   )
+  const setCurrency = (c: Currency) => {
+    if (c === currency) return
+    setCurrencyRaw(c)
+    setLines(rawLines.map((l) => ({ ...l, price: '' })))
+  }
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
   const defaultLoc = f.channel === 'amazon' ? 'amazon' : 'depo'
-  const subtotal = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const fxSubtotal = rawLines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.price) || 0), 0)
+  const subtotal = fxSubtotal * fx.rate
   const net = subtotal - (Number(f.commission) || 0) - (Number(f.shipping_cost) || 0)
 
   // Komisyon ve kargo, Stok → Kanal maliyetleri'nden otomatik hesaplanır; elle değiştirilirse dokunulmaz.
@@ -271,9 +292,9 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
       estimateCosts(
         costs.data,
         f.channel,
-        realLines(rawLines).map((l) => ({ name: items.find((i) => i.id === l.item_id)?.name ?? '', qty: Number(l.qty), price: Number(l.price) || 0 })),
+        realLines(rawLines).map((l) => ({ name: items.find((i) => i.id === l.item_id)?.name ?? '', qty: Number(l.qty), price: (Number(l.price) || 0) * fx.rate })),
       ),
-    [costs.data, f.channel, rawLines, items],
+    [costs.data, f.channel, rawLines, items, fx.rate],
   )
   useEffect(() => {
     if (!autoCost) return
@@ -296,12 +317,19 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
     e.preventDefault()
     const lines = realLines(rawLines)
     if (!lines.length) return toast('En az bir ürün için adet girin.', 'error')
+    if (currency !== 'TRY' && !(fx.rate > 0)) return toast('Kur yok. Kuru elle girin.', 'error')
     setBusy(true)
+    // Düzenlemede fuar bağlantısı, ödeme şekli ve satır indirimleri korunsun
+    const prev = new Map((sale?.sale_items ?? []).map((l) => [l.item_id, l]))
     try {
       await write(
         supabase.rpc('save_sale', {
           p_header: {
             id: sale?.id ?? null,
+            fair_id: (sale as any)?.fair_id ?? null,
+            payment_method: (sale as any)?.payment_method ?? null,
+            currency,
+            fx_rate: currency === 'TRY' ? null : fx.rate,
             ...f,
             commission: Number(f.commission) || 0,
             shipping_cost: Number(f.shipping_cost) || 0,
@@ -310,7 +338,19 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
             customer: f.customer || null,
             note: f.note || null,
           },
-          p_lines: lines.map((l) => ({ item_id: l.item_id, qty: Number(l.qty), unit_price: Number(l.price) || 0, location_id: l.location_id ?? defaultLoc })),
+          p_lines: lines.map((l) => {
+            const old = prev.get(l.item_id)
+            return {
+              item_id: l.item_id,
+              qty: Number(l.qty),
+              unit_price: Math.round((Number(l.price) || 0) * fx.rate * 100) / 100,
+              fx_unit_price: currency === 'TRY' ? null : Number(l.price) || 0,
+              location_id: l.location_id ?? defaultLoc,
+              list_price: old?.list_price ?? null,
+              discount: old?.discount ?? 0,
+              campaign: old?.campaign ?? null,
+            }
+          }),
         }),
       )
       invalidate(...AFTER.sale)
@@ -332,7 +372,8 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
       footer={
         <>
           <p className="mr-auto text-sm text-ink-soft">
-            Net <b className="font-display text-lg font-black text-ink">{tl(net)}</b>
+            {currency !== 'TRY' && <span className="mr-2">{money(fxSubtotal, currency)} × {fx.rate.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} ·</span>}
+            Net <b className="font-display text-lg font-black text-ink">{money(net, 'TRY', false)}</b>
           </p>
           <Button variant="secondary" onClick={onClose}>
             Vazgeç
@@ -381,9 +422,10 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
           </Field>
         </div>
 
+        <CurrencyBar currency={currency} setCurrency={setCurrency} fx={fx} hint="Satış bu kurla TL'ye çevrilip kaydedilir; komisyon ve kargo TL girilir." />
         <div>
           <p className="mb-2 text-sm font-bold text-ink">Ürünler</p>
-          <LinesEditor items={adjusted} lines={rawLines} setLines={setLines} priceFrom="price" priceLabel="Satış fiyatı" stockFrom={(l) => l.location_id ?? defaultLoc} showLocation />
+          <LinesEditor key={currency} items={adjusted} lines={rawLines} setLines={setLines} priceFrom="price" priceLabel="Satış fiyatı" stockFrom={(l) => l.location_id ?? defaultLoc} showLocation currency={currency} rate={fx.rate} />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

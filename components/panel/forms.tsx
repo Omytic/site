@@ -81,6 +81,8 @@ export function LinesEditor({
   priceFromCard,
   allowNew,
   pickTitle,
+  currency = 'TRY',
+  rate = 1,
 }: {
   items: ItemWithStock[]
   lines: Line[]
@@ -97,7 +99,11 @@ export function LinesEditor({
   allowNew?: boolean
   /** Ürün seçme başlığı (varsayılan: "Ne alındı / satıldı?") */
   pickTitle?: string
+  /** Fiyatlar bu para biriminde girilir (dolar/euro). Ürün kartında aynı dövizde fiyat varsa o gelir, yoksa TL fiyat kura bölünür. */
+  currency?: 'TRY' | 'USD' | 'EUR'
+  rate?: number
 }) {
+  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₺'
   const { toast } = useUi()
   const models = useMemo(() => groupModels(items.filter((i) => i.active || lines.some((l) => l.item_id === i.id))), [items, lines])
   const modelOf = (itemId: string) => models.find((m) => m.items.some((i) => i.id === itemId))
@@ -158,7 +164,15 @@ export function LinesEditor({
     const ex = linesOf(m)[0]?.price
     if (ex !== undefined && ex !== '') return ex
     if (blockPrice[m.key] !== undefined) return blockPrice[m.key]
-    const p = priceFrom ? m.items[0]?.[priceFrom] : 0
+    if (!priceFrom) return ''
+    const it = m.items[0]
+    if (currency !== 'TRY') {
+      const fx = it?.currency === currency ? (priceFrom === 'price' ? it.fx_price : it.fx_cost) : null
+      if (fx) return String(Number(fx))
+      const tlv = Number(it?.[priceFrom] ?? 0)
+      return tlv && rate > 0 ? String(Math.round((tlv / rate) * 100) / 100) : ''
+    }
+    const p = it?.[priceFrom]
     return p ? String(p) : ''
   }
   const locOf = (m: Model) => linesOf(m)[0]?.location_id ?? blockLoc[m.key]
@@ -292,7 +306,7 @@ export function LinesEditor({
                       <span className="mb-1 block text-xs font-semibold text-ink-soft/60">{priceLabel ?? 'Birim fiyat'}</span>
                       <div className="flex h-11 items-center justify-between gap-2 rounded-xl bg-[#F7F6F2] px-3 text-sm">
                         <span>
-                          <b className="tabular-nums text-ink">{priceOf(m) ? `₺${Number(priceOf(m)).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}` : 'girilmemiş'}</b>
+                          <b className="tabular-nums text-ink">{priceOf(m) ? `${sym}${Number(priceOf(m)).toLocaleString('tr-TR', { maximumFractionDigits: 4 })}` : 'girilmemiş'}</b>
                           <span className="text-ink-soft/60"> {priceOf(m) ? `KDV hariç · %${num(m.items[0].vat_rate ?? 20)} KDV` : ''}</span>
                         </span>
                         <button type="button" onClick={() => setEditPrice((x) => ({ ...x, [m.key]: true }))} className="flex items-center gap-1 text-xs font-semibold text-ink-soft hover:text-ink">
@@ -303,7 +317,7 @@ export function LinesEditor({
                   ) : (
                     <label>
                       <span className="mb-1 block text-xs font-semibold text-ink-soft/60">
-                        {priceLabel ?? 'Birim fiyat'} (₺){single ? '' : ', bütün numaralar için'}
+                        {priceLabel ?? 'Birim fiyat'} ({sym}){single ? '' : ', bütün numaralar için'}
                       </span>
                       <Input type="number" inputMode="decimal" min="0" step="any" value={priceOf(m)} onChange={(e) => setPrice(m, e.target.value)} />
                     </label>

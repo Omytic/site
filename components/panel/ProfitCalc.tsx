@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Save } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { CHANNELS, label } from '@/lib/panel/constants'
-import { costFor, modelTitle, variantLabel, type ChannelCost, type Model } from '@/lib/panel/data'
+import { AFTER, costFor, invalidate, modelTitle, variantLabel, write, type ChannelCost, type Model } from '@/lib/panel/data'
 import { MARKETPLACES, STOPAJ_PCT, unitEconomics } from '@/lib/panel/economics'
-import { pct, tl as tl0 } from '@/lib/panel/format'
+import { pct, tl as tl0, today } from '@/lib/panel/format'
+import { fetchRate } from '@/lib/panel/fx'
 
 // Bu ekranda kuruş da görünsün
 const tl = (v: number) => tl0(v, true)
-import { Card, cx, Input, Segmented, Select } from './ui'
+import { Button, Card, cx, Input, Segmented, Select, useUi } from './ui'
 
 const CALC_CHANNELS = ['amazon', 'trendyol', 'hepsiburada', 'seryn_site'] as const
 type CalcChannel = (typeof CALC_CHANNELS)[number]
@@ -35,10 +38,15 @@ export function ProfitCalc({ model, costs, title = 'Kâr ve KDV hesabı' }: { mo
   // Fiyatı / maliyeti farklı varyantlar (ör. SERYN 10 g, 18 g, lansman) ayrı seçilebilir
   const distinct = model ? model.items.filter((x, k, a) => a.findIndex((y) => y.price === x.price && y.cost === x.cost && (y.vat_rate ?? 20) === (x.vat_rate ?? 20)) === k) : []
   const [vid, setVid] = useState('')
+  const { toast } = useUi()
+  const [busy, setBusy] = useState(false)
+  const sel = model?.items.find((x) => x.id === vid) ?? model?.items[0]
+  const mTitle = model ? modelTitle(model) : ''
+  const cc = model ? costFor(costs, ch, mTitle) : costFor(costs, ch, '')
   const fromModel = () => {
-    const i = model?.items.find((x) => x.id === vid) ?? model?.items[0]
+    const i = sel
     const vat = Number(i?.vat_rate ?? 20)
-    const c = model ? costFor(costs, ch, modelTitle(model)) : costFor(costs, ch, '')
+    const c = cc
     return {
       price: i ? fmt(i.price) : '',
       vat: String(vat),
@@ -49,12 +57,84 @@ export function ProfitCalc({ model, costs, title = 'Kâr ve KDV hesabı' }: { mo
       stopaj: MARKETPLACES.includes(ch),
     }
   }
-  const [f, setF] = useState(fromModel)
-  // Model ya da kanal değişince alanlar o ürünün kartından ve kanal maliyetinden yeniden dolar
+  type Form = ReturnType<typeof fromModel>
+  // Kayıtlı değerler (ürün kartı + kanal maliyeti). Veri yenilense de içerik aynıysa aynı kalır.
+  const base = fromModel()
+  const baseSig = JSON.stringify(base)
+  const seedKey = `${model?.key ?? ''}|${ch}|${vid}`
+  // Yazılan ama kaydedilmeyen değerler kanal/varyant değiştirince kaybolmasın
+  const drafts = useRef(new Map<string, Form>())
+  const lastBase = useRef<{ key: string; sig: string }>({ key: seedKey, sig: baseSig })
+  const [f, setF] = useState<Form>(base)
   useEffect(() => {
-    setF(fromModel())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model?.key, ch, costs, vid])
+    const prev = lastBase.current
+    lastBase.current = { key: seedKey, sig: baseSig }
+    if (prev.key !== seedKey) {
+      // Başka ürün / kanal / varyant: o seçimin taslağı varsa onu, yoksa kayıtlı değerleri aç
+      setF(drafts.current.get(seedKey) ?? (JSON.parse(baseSig) as Form))
+      return
+    }
+    if (prev.sig === baseSig) return // sadece yenilendi, değişen bir şey yok: yazılanlara dokunma
+    // Kayıtlı değerler gerçekten değişti (ör. biri ürün kartını güncelledi): kullanıcı yazmamışsa yenisini göster
+    setF((cur) => (JSON.stringify(cur) === prev.sig ? (JSON.parse(baseSig) as Form) : cur))
+  }, [seedKey, baseSig])
+  useEffect(() => {
+    if (JSON.stringify(f) === baseSig) drafts.current.delete(seedKey)
+    else drafts.current.set(seedKey, f)
+  }, [f, seedKey, baseSig])
+
+  const same = (a: string, b: string) => n(a) === n(b)
+  const itemChanged = !!model && (!same(f.price, base.price) || !same(f.vat, base.vat) || !same(f.buy, base.buy) || !same(f.buyVat, base.buyVat))
+  const costChanged = !same(f.commissionPct, base.commissionPct) || !same(f.cargo, base.cargo)
+  const dirty = itemChanged || costChanged
+  // Kaydedilecek ürünler: seçili varyantla aynı fiyat/maliyetteki varyantlar (tek fiyatlı modelde hepsi)
+  const targets = model && sel ? model.items.filter((x) => x.price === sel.price && x.cost === sel.cost && (x.vat_rate ?? 20) === (sel.vat_rate ?? 20)) : []
+
+  const save = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (itemChanged && targets.length) {
+        const patch: Record<string, unknown> = {}
+        const price = Math.round(n(f.price) * 100) / 100
+        const cost = Math.round((n(f.buy) / (1 + n(f.buyVat) / 100)) * 100) / 100
+        if (!same(f.price, base.price)) patch.price = price
+        if (!same(f.vat, base.vat)) patch.vat_rate = n(f.vat)
+        if (!same(f.buy, base.buy) || !same(f.buyVat, base.buyVat)) patch.cost = cost
+        const cur = sel?.currency ?? 'TRY'
+        if (cur !== 'TRY') {
+          // Dövizli üründe döviz fiyatı da bugünün kuruyla güncellenir (yoksa ertesi gün kur güncellemesi TL fiyatı geri alır)
+          const r = await fetchRate(today())
+          const rate = r.rates[cur as 'USD' | 'EUR']?.selling
+          if (!(rate > 0)) throw new Error('Kur alınamadı; biraz sonra tekrar deneyin.')
+          if ('price' in patch) patch.fx_price = Math.round((price / rate) * 10000) / 10000
+          if ('cost' in patch) patch.fx_cost = Math.round((cost / rate) * 10000) / 10000
+        }
+        if (Object.keys(patch).length)
+          await write(
+            supabase.from('items').update(patch).in(
+              'id',
+              targets.map((x) => x.id),
+            ),
+          )
+        invalidate(...AFTER.item)
+      }
+      if (costChanged) {
+        const row = { channel: ch, model: model ? mTitle : null, commission_pct: n(f.commissionPct), fee_per_unit: n(f.cargo) }
+        // Bu ürüne özel tanım varsa onu güncelle; yoksa bu ürüne özel yeni tanım aç (genel tanım diğer ürünler için aynı kalır)
+        const own = (costs ?? []).find((c) => c.channel === ch && (model ? !!c.model && c.model.trim().toLocaleLowerCase('tr') === mTitle.trim().toLocaleLowerCase('tr') : !c.model))
+        if (own) await write(supabase.from('channel_costs').update({ commission_pct: row.commission_pct, fee_per_unit: row.fee_per_unit }).eq('id', own.id))
+        else await write(supabase.from('channel_costs').insert(row))
+        invalidate(...AFTER.costs)
+      }
+      drafts.current.delete(seedKey)
+      toast(model ? `${mTitle} kaydedildi.` : `${label(CHANNELS, ch)} komisyon ve kargo kaydedildi.`)
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
 
   const r = useMemo(
@@ -128,9 +208,38 @@ export function ProfitCalc({ model, costs, title = 'Kâr ve KDV hesabı' }: { mo
             <input type="checkbox" checked={f.stopaj} onChange={(e) => set({ stopaj: e.target.checked })} className="h-4 w-4 accent-[#0E1527]" />
             %{STOPAJ_PCT} e-ticaret stopajı (pazaryeri keser, yıl sonunda vergiden düşülür)
           </label>
-          <p className="text-[11px] text-ink-soft/60">
-            Alanlar ürün kartından ve {label(CHANNELS, ch)} kanal maliyetinden doldu; burada değiştirmek kayıtlara dokunmaz, sadece hesaplar.
-          </p>
+          <div className={cx('flex flex-wrap items-center gap-3 rounded-xl px-3 py-2.5', dirty ? 'bg-[#FFF4D6]' : 'bg-[#F7F6F2]')}>
+            <p className="min-w-0 flex-1 text-xs text-ink-soft">
+              {dirty ? (
+                <>
+                  <b className="text-ink">Kaydedilmedi.</b>{' '}
+                  {[
+                    itemChanged && (targets.length > 1 ? `fiyat/maliyet ${targets.length} varyantın ürün kartına` : 'fiyat/maliyet ürün kartına'),
+                    costChanged && `komisyon/kargo ${label(CHANNELS, ch)} ${model ? 'için bu ürüne özel' : 'genel'} maliyetine`,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}{' '}
+                  yazılır.
+                </>
+              ) : model ? (
+                <span className="inline-flex items-center gap-1">
+                  <Check className="h-3.5 w-3.5 text-[#0a7d0a]" /> Ürün kartı ve {label(CHANNELS, ch)} maliyetiyle aynı.
+                </span>
+              ) : (
+                'Ürün seçmeden serbest hesap. Komisyon ve kargoyu kaydederseniz kanalın genel maliyeti olur.'
+              )}
+            </p>
+            {dirty && (
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setF(base)} disabled={busy}>
+                  Geri al
+                </Button>
+                <Button size="sm" onClick={save} loading={busy} icon={<Save className="h-3.5 w-3.5" />}>
+                  Kaydet
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-4">

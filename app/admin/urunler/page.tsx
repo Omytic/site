@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useOpenFromQuery } from '@/components/panel/forms'
@@ -8,7 +8,8 @@ import { ArrowLeft, Boxes, Palette, Pencil, Plus, Ruler } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRANDS, itemImage, label, type Brand } from '@/lib/panel/constants'
 import { addVariants, AFTER, groupModels, invalidate, modelTitle, Q, useItemsWithStock, variantLabel, write, type ItemWithStock, type Model } from '@/lib/panel/data'
-import { num, tl } from '@/lib/panel/format'
+import { money, num, tl, today } from '@/lib/panel/format'
+import { CURRENCIES, fetchRate, symOf, useFxRate, type Currency } from '@/lib/panel/fx'
 import { ItemForm } from '@/components/panel/ItemForm'
 import { CostsDrawer, NetProfit } from '@/components/panel/costs'
 import { ProfitCalc } from '@/components/panel/ProfitCalc'
@@ -161,6 +162,9 @@ function ModelCard({ m }: { m: Model }) {
             Maliyet{' '}
             <b className="text-ink">{cost === null ? 'karışık' : cost ? tl(cost, true) : <span className="text-[#b07a00]">yok</span>}</b>
             {cost ? ` + %${num(vat ?? 20)} KDV` : ''} · Satış <b className="text-ink">{price === null ? 'karışık' : tl(price, true)}</b>
+            {m.items[0].currency && m.items[0].currency !== 'TRY' && m.items[0].fx_price ? (
+              <span className="ml-1 rounded-md bg-[#EAF3FF] px-1.5 py-0.5 font-bold text-[#1d5fb0]">{money(Number(m.items[0].fx_price), m.items[0].currency)}</span>
+            ) : null}
           </span>
           {lows > 0 && <StatusPill tone="critical">{lows} kritik</StatusPill>}
         </div>
@@ -182,12 +186,20 @@ function ModelPage({ model }: { model: Model }) {
   const colors = uniq(model.items.map((i) => i.color ?? ''))
 
   // Fiyat ve maliyet: bütün varyantlara
+  // Para birimi: dövizli modelde fiyat ve maliyet dövizde girilir, TL karşılığı bugünün TCMB kuruyla yazılır
+  const [cur, setCur] = useState<Currency>(((first.currency as Currency) ?? 'TRY') as Currency)
+  const fx = useFxRate(cur, today(), 'selling')
+  const fxSame = (k: 'fx_cost' | 'fx_price') => {
+    const vals = uniq(model.items.map((i) => (i[k] == null ? '' : String(Number(i[k])))))
+    return vals.length === 1 && vals[0] !== '' ? Number(vals[0]) : null
+  }
   const init = () => {
-    const c = sameOrNull(model, 'cost')
+    const isFx = (first.currency ?? 'TRY') !== 'TRY'
+    const c = isFx ? fxSame('fx_cost') : sameOrNull(model, 'cost')
     const v = sameOrNull(model, 'vat_rate')
     return {
       name: first.name,
-      price: sameOrNull(model, 'price')?.toString() ?? '',
+      price: (isFx ? fxSame('fx_price') : sameOrNull(model, 'price'))?.toString() ?? '',
       cost: c?.toString() ?? '',
       vat: (v ?? 20).toString(),
       costInc: c !== null ? (c * (1 + (v ?? 20) / 100)).toFixed(2).replace(/\.00$/, '') : '',
@@ -195,6 +207,18 @@ function ModelPage({ model }: { model: Model }) {
     }
   }
   const [f, setF] = useState(init)
+  // Kayıtlı değerler başka yerden değişirse (ör. aşağıdaki kâr hesabından kaydedildi) kutu da güncellensin;
+  // siz bu kutuya bir şey yazdıysanız yazdığınıza dokunulmaz.
+  const initSig = JSON.stringify(init())
+  const lastInit = useRef(initSig)
+  useEffect(() => {
+    const prev = lastInit.current
+    lastInit.current = initSig
+    if (prev === initSig) return
+    setF((x) => (JSON.stringify(x) === prev ? JSON.parse(initSig) : x))
+    setCur(((first.currency as Currency) ?? 'TRY') as Currency)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initSig])
   const [busy, setBusy] = useState(false)
   const setCost = (cost: string) => setF((x) => ({ ...x, cost, costInc: cost === '' ? '' : ((Number(cost) || 0) * (1 + (Number(x.vat) || 0) / 100)).toFixed(2).replace(/\.00$/, '') }))
   const setCostInc = (costInc: string) => setF((x) => ({ ...x, costInc, cost: costInc === '' ? '' : ((Number(costInc) || 0) / (1 + (Number(x.vat) || 0) / 100)).toFixed(2).replace(/\.00$/, '') }))
@@ -204,8 +228,24 @@ function ModelPage({ model }: { model: Model }) {
     e.preventDefault()
     const patch: Record<string, unknown> = { vat_rate: Number(f.vat) || 0 }
     if (f.name.trim() && f.name.trim() !== first.name) patch.name = f.name.trim()
-    if (f.price !== '') patch.price = Number(f.price) || 0
-    if (f.cost !== '') patch.cost = Number(f.cost) || 0
+    if (cur !== 'TRY' && !(fx.rate > 0)) return toast('Kur henüz gelmedi; biraz bekleyin.', 'error')
+    patch.currency = cur
+    if (cur === 'TRY') {
+      if (f.price !== '') patch.price = Number(f.price) || 0
+      if (f.cost !== '') patch.cost = Number(f.cost) || 0
+      patch.fx_price = null
+      patch.fx_cost = null
+    } else {
+      // Döviz tutarı saklanır; TL fiyat bugünün kuruyla yazılır ve her iş günü kendiliğinden güncellenir
+      if (f.price !== '') {
+        patch.fx_price = Number(f.price) || 0
+        patch.price = Math.round((Number(f.price) || 0) * fx.rate * 100) / 100
+      }
+      if (f.cost !== '') {
+        patch.fx_cost = Number(f.cost) || 0
+        patch.cost = Math.round((Number(f.cost) || 0) * fx.rate * 100) / 100
+      }
+    }
     if (f.min_stock !== '') patch.min_stock = Number(f.min_stock) || 0
     setBusy(true)
     try {
@@ -302,8 +342,43 @@ function ModelPage({ model }: { model: Model }) {
             <Field label={model.brand === 'seryn' ? 'Ürün adı' : 'Ürün / model adı'}>
               <Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </Field>
+            <div>
+              <span className="mb-1.5 block text-[13px] font-semibold text-ink-soft">Hangi parayla alınıp satılıyor?</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {CURRENCIES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={async () => {
+                      if (c.id === cur) return
+                      // Girilmiş tutarları yeni para birimine çevir (bugünün TCMB kuruyla)
+                      let rates: Record<string, number> = { TRY: 1 }
+                      try {
+                        const r = await fetchRate(today())
+                        rates = { TRY: 1, USD: r.rates.USD.selling, EUR: r.rates.EUR.selling }
+                      } catch {
+                        rates = { TRY: 0 }
+                      }
+                      const from = rates[cur] ?? 0
+                      const to = rates[c.id] ?? 0
+                      const conv = (v: string) => (v === '' || !(from > 0) || !(to > 0) ? (from > 0 && to > 0 ? v : '') : String(Math.round(((Number(v) * from) / to) * 100) / 100))
+                      setF((x) => ({ ...x, price: conv(x.price), cost: conv(x.cost), costInc: conv(x.costInc) }))
+                      setCur(c.id)
+                    }}
+                    className={cx('rounded-xl px-3 py-1.5 text-sm font-bold ring-1 transition', cur === c.id ? 'bg-night text-white ring-night' : 'bg-white text-ink-soft ring-black/10 hover:ring-black/25')}
+                  >
+                    {c.sym} {c.label}
+                  </button>
+                ))}
+              </div>
+              {cur !== 'TRY' && (
+                <p className="mt-1.5 text-xs text-ink-soft/70">
+                  {fx.loading ? 'Kur getiriliyor…' : fx.rate > 0 ? `Bugün 1 ${symOf(cur)} = ${money(fx.rate, 'TRY')} · TL fiyat her iş günü TCMB kuruyla güncellenir, maliyet alım gününün kuruyla.` : fx.error}
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Birim maliyet, KDV hariç (₺)">
+              <Field label={`Birim maliyet, KDV hariç (${symOf(cur)})`}>
                 <Input type="number" min="0" step="any" value={f.cost} placeholder="karışık" onChange={(e) => setCost(e.target.value)} />
               </Field>
               <Field label="KDV %">
@@ -315,12 +390,20 @@ function ModelPage({ model }: { model: Model }) {
                   ))}
                 </Select>
               </Field>
-              <Field label="Birim maliyet, KDV dahil (₺)" hint="İkisinden birini yazmanız yeter.">
+              <Field label={`Birim maliyet, KDV dahil (${symOf(cur)})`} hint="İkisinden birini yazmanız yeter.">
                 <Input type="number" min="0" step="any" value={f.costInc} placeholder="karışık" onChange={(e) => setCostInc(e.target.value)} />
               </Field>
               <Field
-                label={`Satış fiyatı, KDV dahil (₺${isFabric ? ' / ' + first.unit : ''})`}
-                hint={Number(f.price) > 0 ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat) || 0) / 100))}` : undefined}
+                label={`Satış fiyatı, KDV dahil (${symOf(cur)}${isFabric ? ' / ' + first.unit : ''})`}
+                hint={
+                  Number(f.price) > 0
+                    ? cur === 'TRY'
+                      ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat) || 0) / 100))}`
+                      : fx.rate > 0
+                        ? `Bugün ≈ ${money(Number(f.price) * fx.rate, 'TRY')}`
+                        : undefined
+                    : undefined
+                }
               >
                 <Input type="number" min="0" step="any" value={f.price} placeholder="karışık" onChange={(e) => setF({ ...f, price: e.target.value })} />
               </Field>
@@ -428,6 +511,7 @@ function ModelPage({ model }: { model: Model }) {
                   </td>
                   <td className={cx('whitespace-nowrap text-right tabular-nums', differs ? 'font-semibold text-[#8a5a00]' : 'text-ink-soft')}>
                     {i.cost ? tl(i.cost, true) : '—'} / {tl(i.price, true)}
+                    {i.currency && i.currency !== 'TRY' && i.fx_price ? <span className="block text-[11px] font-bold text-[#1d5fb0]">{i.fx_cost ? money(Number(i.fx_cost), i.currency) + ' / ' : ''}{money(Number(i.fx_price), i.currency)}</span> : null}
                   </td>
                   <td>
                     <button type="button" onClick={() => toggleActive(i)} title={i.active ? 'Pasife al (listelerde gizlenir)' : 'Aktif yap'}>

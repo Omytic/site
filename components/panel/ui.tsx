@@ -283,12 +283,31 @@ export function Drawer({
   footer?: ReactNode
   wide?: boolean
 }) {
+  // Yazılan ama kaydedilmeyen bilgi varsa dışarı tıklayınca / Esc / X ile kapanmadan önce sor
+  const ui = useContext(UiCtx)
+  const dirty = useRef(false)
+  const asking = useRef(false)
+  useEffect(() => {
+    dirty.current = false
+  }, [open])
+  const guardedClose = useCallback(async () => {
+    if (asking.current) return
+    if (dirty.current) {
+      asking.current = true
+      const ok = ui
+        ? await ui.confirm('Kaydedilmemiş bilgiler var', 'Kapatırsanız bu pencerede yazdıklarınız silinir.', 'Kaydetmeden kapat')
+        : window.confirm('Kaydedilmemiş bilgiler var. Kapatırsanız yazdıklarınız silinir.')
+      asking.current = false
+      if (!ok) return
+    }
+    onClose()
+  }, [onClose, ui])
   useEffect(() => {
     if (!open) return
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && !asking.current && guardedClose()
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
-  }, [open, onClose])
+  }, [open, guardedClose])
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   if (!mounted) return null
@@ -297,17 +316,19 @@ export function Drawer({
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label={title}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-night/40 backdrop-blur-[2px]" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={guardedClose} className="absolute inset-0 bg-night/40 backdrop-blur-[2px]" />
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 40 }}
+            onInput={() => (dirty.current = true)}
+            onChange={() => (dirty.current = true)}
             className={cx('absolute inset-y-0 right-0 flex w-full flex-col bg-[#F7F6F2] shadow-2xl', wide ? 'max-w-3xl' : 'max-w-lg')}
           >
             <header className="flex items-center justify-between border-b border-line bg-white px-5 py-4">
               <h2 className="font-display text-xl font-black tracking-tight text-ink">{title}</h2>
-              <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/5" aria-label="Kapat">
+              <button onClick={guardedClose} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/5" aria-label="Kapat">
                 <X className="h-5 w-5" />
               </button>
             </header>
@@ -395,8 +416,34 @@ export function useUi() {
 /* Tablo                                                               */
 /* ------------------------------------------------------------------ */
 export function Table({ head, children, className }: { head: ReactNode; children: ReactNode; className?: string }) {
+  // Telefonda tablo kart kart görünür: her hücrenin üstüne sütun adı yazılır (bkz. globals.css .ptable)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    const label = () => {
+      const heads = Array.from(root.querySelectorAll('thead th')).map((th) => (th.textContent ?? '').trim())
+      root.querySelectorAll('tbody tr').forEach((tr) => {
+        let col = 0
+        Array.from(tr.children).forEach((td) => {
+          const span = Number(td.getAttribute('colspan') ?? 1)
+          const lab = span > 1 ? '' : heads[col] ?? ''
+          if (td.getAttribute('data-label') !== lab) td.setAttribute('data-label', lab)
+          // Uzun içerik (ürün listesi vb.) ya da birden çok sütunu kaplayan hücre tam genişlik
+          const wide = span > 1 || (td.textContent ?? '').length > 34 || td.querySelectorAll('p, li, br, div > span + span').length > 1
+          td.toggleAttribute('data-wide', wide)
+          td.toggleAttribute('data-actions', !lab && !(td.textContent ?? '').trim() && !!td.querySelector('button, a, input'))
+          col += span
+        })
+      })
+    }
+    label()
+    const mo = new MutationObserver(label)
+    mo.observe(root.querySelector('tbody') ?? root, { childList: true, subtree: true, characterData: true })
+    return () => mo.disconnect()
+  }, [])
   return (
-    <div className={cx('overflow-x-auto', className)}>
+    <div ref={ref} className={cx('ptable overflow-x-auto', className)}>
       <table className="w-full min-w-[640px] border-separate border-spacing-0 text-sm">
         <thead className="text-left text-xs font-semibold text-ink-soft/60 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-line [&_th]:bg-white [&_th]:px-4 [&_th]:py-2.5 [&_th]:font-semibold">
           {head}

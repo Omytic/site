@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { BRANDS, UNITS, type Brand } from '@/lib/panel/constants'
 import { AFTER, invalidate, write, type ItemWithStock } from '@/lib/panel/data'
-import { tl } from '@/lib/panel/format'
+import { money, tl, today } from '@/lib/panel/format'
+import { CURRENCIES, symOf, useFxRate, type Currency } from '@/lib/panel/fx'
 import { Button, Drawer, Field, Input, Select, Textarea, useUi } from './ui'
 
 /** Ürün kartı: yeni ürün, mevcut modele yeni varyant (id'si boş kayıt) ya da varyant düzenleme. */
@@ -38,13 +39,27 @@ export function ItemForm({
     min_stock: preset ? String(preset.min_stock) : '',
     active: item?.active ?? true,
     notes: item?.notes ?? '',
+    currency: ((preset?.currency as Currency) ?? 'TRY') as Currency,
+    fx_cost: preset?.fx_cost != null ? String(Number(preset.fx_cost)) : '',
+    fx_price: preset?.fx_price != null ? String(Number(preset.fx_price)) : '',
   })
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
+  // Dövizli ürün: fiyat ve maliyet dövizde girilir; TL karşılığı bugünün TCMB kuruyla hesaplanır, satış fiyatı her gün kurla güncellenir
+  const fx = useFxRate(f.currency, today(), 'selling')
+  const isFx = f.currency !== 'TRY'
+  const money_ = () => ({
+    currency: f.currency,
+    fx_cost: isFx ? Number(f.fx_cost) || null : null,
+    fx_price: isFx ? Number(f.fx_price) || null : null,
+    cost: isFx ? Math.round((Number(f.fx_cost) || 0) * fx.rate * 100) / 100 : Number(f.cost) || 0,
+    price: isFx ? Math.round((Number(f.fx_price) || 0) * fx.rate * 100) / 100 : Number(f.price) || 0,
+  })
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     // Alım formunun içinden açıldığında dıştaki formu da göndermesin
     e.stopPropagation()
+    if (isFx && !(fx.rate > 0)) return toast('Kur henüz gelmedi; biraz bekleyin ya da kuru elle girin.', 'error')
     setBusy(true)
     // Yeni üründe "36-37, 37-38, 38-39" gibi virgülle yazılırsa her numara ayrı varyant açılır
     const variants = item ? [f.variant.trim()] : f.variant.split(',').map((v) => v.trim()).filter(Boolean)
@@ -56,9 +71,8 @@ export function ItemForm({
         color: f.color.trim() || null,
         sku: f.sku.trim() ? `${f.sku.trim()}-${v.replace(/[^0-9A-Za-z]/g, '')}${f.color.trim() ? `-${f.color.trim().slice(0, 3).toUpperCase()}` : ''}` : null,
         unit: f.unit,
-        cost: Number(f.cost) || 0,
+        ...money_(),
         vat_rate: Number(f.vat_rate) || 0,
-        price: Number(f.price) || 0,
         min_stock: Number(f.min_stock) || 0,
         active: f.active,
         notes: f.notes || null,
@@ -83,9 +97,8 @@ export function ItemForm({
       color: f.color.trim() || null,
       sku: f.sku.trim() || null,
       unit: f.unit,
-      cost: Number(f.cost) || 0,
+      ...money_(),
       vat_rate: Number(f.vat_rate) || 0,
-      price: Number(f.price) || 0,
       min_stock: Number(f.min_stock) || 0,
       active: f.active,
       notes: f.notes || null,
@@ -168,9 +181,30 @@ export function ItemForm({
           <Field label="SKU / kod" hint={!item && f.variant.includes(',') ? 'Her numaraya sonuna numara eklenerek verilir.' : undefined}>
             <Input value={f.sku} onChange={(e) => set({ sku: e.target.value })} />
           </Field>
-          <Field label="Birim maliyet, KDV hariç (₺)" hint={Number(f.cost) > 0 ? `KDV dahil ${tl((Number(f.cost) || 0) * (1 + (Number(f.vat_rate) || 0) / 100))}` : 'Alımlarda bu maliyet kullanılır.'}>
-            <Input type="number" min="0" step="any" value={f.cost} onChange={(e) => set({ cost: e.target.value })} />
+          <Field label="Hangi parayla alınıp satılıyor?" className="sm:col-span-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => set({ currency: c.id })}
+                  className={`rounded-xl px-3 py-2 text-sm font-bold ring-1 transition ${f.currency === c.id ? 'bg-night text-white ring-night' : 'bg-white text-ink-soft ring-black/10 hover:ring-black/25'}`}
+                >
+                  {c.sym} {c.label}
+                </button>
+              ))}
+              {isFx && <span className="text-xs text-ink-soft/70">{fx.loading ? 'Kur getiriliyor…' : fx.rate > 0 ? `Bugün 1 ${symOf(f.currency)} = ${money(fx.rate, 'TRY')} (${fx.note ?? 'TCMB'})` : fx.error ?? ''}</span>}
+            </div>
           </Field>
+          {isFx ? (
+            <Field label={`Birim maliyet, KDV hariç (${symOf(f.currency)})`} hint={Number(f.fx_cost) > 0 && fx.rate > 0 ? `Bugünün kuruyla ≈ ${money(Number(f.fx_cost) * fx.rate, 'TRY')}. Alım girilince o günün kuruyla güncellenir.` : 'Alımlarda bu maliyet önerilir.'}>
+              <Input type="number" min="0" step="any" value={f.fx_cost} onChange={(e) => set({ fx_cost: e.target.value })} />
+            </Field>
+          ) : (
+            <Field label="Birim maliyet, KDV hariç (₺)" hint={Number(f.cost) > 0 ? `KDV dahil ${tl((Number(f.cost) || 0) * (1 + (Number(f.vat_rate) || 0) / 100))}` : 'Alımlarda bu maliyet kullanılır.'}>
+              <Input type="number" min="0" step="any" value={f.cost} onChange={(e) => set({ cost: e.target.value })} />
+            </Field>
+          )}
           <Field label="KDV %">
             <Select value={f.vat_rate} onChange={(e) => set({ vat_rate: e.target.value })}>
               {['0', '1', '10', '20'].map((v) => (
@@ -180,12 +214,18 @@ export function ItemForm({
               ))}
             </Select>
           </Field>
-          <Field
-            label="Satış fiyatı, KDV dahil (₺)"
-            hint={Number(f.price) > 0 ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))}` : undefined}
-          >
-            <Input type="number" min="0" step="any" value={f.price} onChange={(e) => set({ price: e.target.value })} />
-          </Field>
+          {isFx ? (
+            <Field label={`Satış fiyatı, KDV dahil (${symOf(f.currency)})`} hint={Number(f.fx_price) > 0 && fx.rate > 0 ? `Bugün ≈ ${money(Number(f.fx_price) * fx.rate, 'TRY')}. TL fiyat her iş günü TCMB kuruyla kendiliğinden güncellenir.` : undefined}>
+              <Input type="number" min="0" step="any" value={f.fx_price} onChange={(e) => set({ fx_price: e.target.value })} />
+            </Field>
+          ) : (
+            <Field
+              label="Satış fiyatı, KDV dahil (₺)"
+              hint={Number(f.price) > 0 ? `KDV hariç ${tl(Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))} · KDV ${tl(Number(f.price) - Number(f.price) / (1 + (Number(f.vat_rate) || 0) / 100))}` : undefined}
+            >
+              <Input type="number" min="0" step="any" value={f.price} onChange={(e) => set({ price: e.target.value })} />
+            </Field>
+          )}
           <Field label="Kritik stok sınırı" hint="Bunun altına düşünce uyarı verir.">
             <Input type="number" min="0" step="any" value={f.min_stock} onChange={(e) => set({ min_stock: e.target.value })} />
           </Field>

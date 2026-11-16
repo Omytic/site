@@ -3,7 +3,28 @@ const tryFmt2 = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'T
 const numFmt = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 })
 const compactFmt = new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 })
 
-export const tl = (v: number | null | undefined, exact = false) => (exact ? tryFmt2 : tryFmt).format(Number(v ?? 0))
+/*
+ * Görüntüleme para birimi: panelin üstündeki ₺ / $ / € düğmesi. Kayıtlar her zaman TL saklanır;
+ * $ ya da € seçilince tutarlar son TCMB kuruyla çevrilerek gösterilir.
+ */
+export type DisplayCurrency = 'TRY' | 'USD' | 'EUR'
+let display: { cur: DisplayCurrency; rate: number } = { cur: 'TRY', rate: 1 }
+const fxFmt: Record<string, Intl.NumberFormat> = {}
+const fmtFor = (cur: string, exact: boolean) =>
+  (fxFmt[cur + exact] ??= new Intl.NumberFormat('tr-TR', { style: 'currency', currency: cur, minimumFractionDigits: exact ? 2 : 0, maximumFractionDigits: exact ? 2 : 0 }))
+export const setDisplayCurrency = (cur: DisplayCurrency, rate: number) => {
+  display = cur === 'TRY' || !(rate > 0) ? { cur: 'TRY', rate: 1 } : { cur, rate }
+}
+export const displayCurrency = () => display.cur
+/** Grafik eksenleri için: TL tutarı seçili para birimine çevirir (TL seçiliyse aynen döner). */
+export const toDisplay = (v: number) => (display.cur === 'TRY' ? v : v / display.rate)
+export const displaySym = () => (display.cur === 'USD' ? '$' : display.cur === 'EUR' ? '€' : '')
+
+export const tl = (v: number | null | undefined, exact = false) =>
+  display.cur === 'TRY' ? (exact ? tryFmt2 : tryFmt).format(Number(v ?? 0)) : fmtFor(display.cur, exact || Math.abs(Number(v ?? 0) / display.rate) < 100).format(Number(v ?? 0) / display.rate)
+
+/** Belirli bir para biriminde, çevirmeden yaz (ör. "$4,20"). */
+export const money = (v: number | null | undefined, cur: string, exact = true) => (cur === 'TRY' ? (exact ? tryFmt2 : tryFmt) : fmtFor(cur, exact)).format(Number(v ?? 0))
 export const num = (v: number | null | undefined) => numFmt.format(Number(v ?? 0))
 export const compact = (v: number) => compactFmt.format(v)
 export const pct = (v: number) => `%${numFmt.format(Math.round(v * 10) / 10)}`

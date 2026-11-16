@@ -17,8 +17,10 @@ import {
   type BrandOrGenel,
 } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, useLocalState, write, type LedgerRow, type Transaction } from '@/lib/panel/data'
-import { addDays, daysBetween, dateTR, lastMonths, monthKey, monthLabel, norm, tl, today } from '@/lib/panel/format'
+import { addDays, daysBetween, dateTR, lastMonths, monthKey, monthLabel, money, norm, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend, ShareBar, Waterfall } from '@/components/panel/charts'
+import { CurrencyBar } from '@/components/panel/CurrencyBar'
+import { symOf, useFxRate, type Currency } from '@/lib/panel/fx'
 import { useOpenFromQuery } from '@/components/panel/forms'
 import { Badge, Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, useShowMore, useUi } from '@/components/panel/ui'
 
@@ -370,7 +372,7 @@ function TxForm({ tx, onClose }: { tx: Transaction | null; onClose: () => void }
     tx_date: tx?.tx_date ?? today(),
     direction: tx?.direction ?? 'gider',
     category: tx?.category ?? 'ambalaj',
-    amount: tx ? String(tx.amount) : '',
+    amount: tx ? String(tx.currency && tx.currency !== 'TRY' && tx.fx_amount != null ? tx.fx_amount : tx.amount) : '',
     brand: (tx?.brand ?? 'genel') as BrandOrGenel,
     counterparty: tx?.counterparty ?? '',
     payment_status: tx?.payment_status ?? 'odendi',
@@ -379,14 +381,21 @@ function TxForm({ tx, onClose }: { tx: Transaction | null; onClose: () => void }
   })
   const [busy, setBusy] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
+  // Dövizli gelir/gider: gider döviz satış, gelir döviz alış kuruyla TL'ye çevrilir
+  const [currency, setCurrency] = useState<Currency>((tx?.currency as Currency) ?? 'TRY')
+  const fx = useFxRate(currency, f.tx_date, f.direction === 'gelir' ? 'buying' : 'selling', tx?.fx_rate ?? null)
   const cats = f.direction === 'gelir' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES.filter((c) => c.id !== 'mal_alimi' || f.category === 'mal_alimi')
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!(Number(f.amount) > 0)) return toast('Tutar girin.', 'error')
+    if (currency !== 'TRY' && !(fx.rate > 0)) return toast('Kur yok. Kuru elle girin.', 'error')
     setBusy(true)
     const row = {
       ...f,
-      amount: Number(f.amount),
+      amount: Math.round(Number(f.amount) * fx.rate * 100) / 100,
+      currency,
+      fx_rate: currency === 'TRY' ? null : fx.rate,
+      fx_amount: currency === 'TRY' ? null : Number(f.amount),
       counterparty: f.counterparty || null,
       note: f.note || null,
       due_date: f.payment_status === 'bekliyor' ? f.due_date || null : null,
@@ -428,6 +437,7 @@ function TxForm({ tx, onClose }: { tx: Transaction | null; onClose: () => void }
           ]}
         />
         <p className="text-xs text-ink-soft/60">Satış, mal alımı ve reklam harcamaları kendi sayfalarından girilince buraya otomatik gelir; burada tekrar girmeyin.</p>
+        <CurrencyBar currency={currency} setCurrency={setCurrency} fx={fx} hint={Number(f.amount) > 0 && currency !== 'TRY' ? `= ${money(Number(f.amount) * fx.rate, 'TRY')}` : undefined} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Kalem">
             <Select value={f.category} onChange={(e) => set({ category: e.target.value })}>
@@ -438,7 +448,7 @@ function TxForm({ tx, onClose }: { tx: Transaction | null; onClose: () => void }
               ))}
             </Select>
           </Field>
-          <Field label="Tutar (₺)">
+          <Field label={`Tutar (${symOf(currency)})`}>
             <Input type="number" min="0.01" step="any" required value={f.amount} onChange={(e) => set({ amount: e.target.value })} />
           </Field>
           <Field label="Tarih">

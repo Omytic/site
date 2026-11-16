@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { cx } from './ui'
+import { displaySym, toDisplay } from '@/lib/panel/format'
 
 /*
  * Bağımlılıksız SVG grafikleri.
@@ -46,6 +47,8 @@ const shortNum = (v: number) => {
   if (a >= 1000) return `${(v / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} B`
   return v.toLocaleString('tr-TR', { maximumFractionDigits: 1 })
 }
+/** Eksen yazısı: para grafiğinde (format verilmişse) ve panel $/€ gösteriyorsa çevrilmiş değer. */
+const tickLabel = (t: number, format: unknown) => (format !== shortNum && displaySym() ? displaySym() + shortNum(toDisplay(t)) : shortNum(t))
 
 export interface Series {
   id: string
@@ -148,7 +151,7 @@ export function LineChart({
             <g key={t}>
               <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke={t === 0 ? '#D6D3CA' : GRID} />
               <text x={padL - 8} y={Y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill={AXIS_TEXT}>
-                {shortNum(t)}
+                {tickLabel(t, format)}
               </text>
             </g>
           ))}
@@ -257,7 +260,7 @@ export function BarChart({
             <g key={t}>
               <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke={t === 0 ? '#D6D3CA' : GRID} />
               <text x={padL - 8} y={Y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill={AXIS_TEXT}>
-                {shortNum(t)}
+                {tickLabel(t, format)}
               </text>
             </g>
           ))}
@@ -421,7 +424,7 @@ export function Waterfall({ steps, height = 240, format = shortNum }: { steps: {
             <g key={t}>
               <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke={t === 0 ? '#D6D3CA' : GRID} />
               <text x={padL - 8} y={Y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill={AXIS_TEXT}>
-                {shortNum(t)}
+                {tickLabel(t, format)}
               </text>
             </g>
           ))}
@@ -681,7 +684,7 @@ export function ForecastChart({
             <g key={t}>
               <line x1={padL} x2={w - padR} y1={Y(t)} y2={Y(t)} stroke={t === 0 ? '#D6D3CA' : GRID} />
               <text x={padL - 8} y={Y(t)} dy="0.32em" textAnchor="end" fontSize="11" fill={AXIS_TEXT}>
-                {shortNum(t)}
+                {tickLabel(t, format)}
               </text>
             </g>
           ))}
