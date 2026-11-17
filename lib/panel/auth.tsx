@@ -15,8 +15,9 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null)
 
-// YEREL ÖNİZLEME: giriş kapalı.
-const LOCAL_PANEL = true
+// YEREL ÖNİZLEME: giriş sadece bilgisayarda `npm run dev` ile ve .env.local'de NEXT_PUBLIC_LOCAL_PANEL_EMAIL varsa kapalı.
+// Canlı sitede (production build) bu her zaman false olur; giriş ekranı açık kalır.
+const LOCAL_PANEL = process.env.NODE_ENV === 'development' && !!process.env.NEXT_PUBLIC_LOCAL_PANEL_EMAIL
 const LOCAL_ME: Profile = {
   id: '00000000-0000-0000-0000-000000000001',
   username: 'omer',

@@ -12,8 +12,8 @@ import { defaultFrom, importOrders, type NormOrder, type SaleStatus, type SyncRe
  *  - Komisyon bu API'de yok (Finance izni gerekir); Stok → Kanal maliyetleri'ndeki % ve adet başı ücretle hesaplanır.
  */
 
-const TR_MARKETPLACE = 'A33AVAJ2PDY3EV'
-const ENDPOINT = process.env.AMAZON_SP_ENDPOINT || 'https://sellingpartnerapi-eu.amazon.com'
+export const TR_MARKETPLACE = 'A33AVAJ2PDY3EV'
+export const ENDPOINT = process.env.AMAZON_SP_ENDPOINT || 'https://sellingpartnerapi-eu.amazon.com'
 const LWA_URL = process.env.AMAZON_LWA_URL || 'https://api.amazon.com/auth/o2/token'
 const DAY = 86_400_000
 const WINDOW = 7 * DAY
@@ -39,7 +39,10 @@ export function amazonConfigured() {
   return !!(process.env.AMAZON_SP_CLIENT_ID && process.env.AMAZON_SP_CLIENT_SECRET && process.env.AMAZON_SP_REFRESH_TOKEN)
 }
 
-async function accessToken() {
+// Erişim anahtarı 1 saat geçerli; aynı çalıştırmadaki bütün istekler aynısını kullanır
+let cached: { token: string; until: number } | null = null
+export async function accessToken() {
+  if (cached && cached.until > Date.now()) return cached.token
   const res = await fetch(LWA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -58,7 +61,8 @@ async function accessToken() {
     if (/invalid_grant/i.test(why) || /refresh/i.test(why)) throw new Error(`Amazon refresh token geçersiz; Solution Provider Portal'dan yeniden oluşturun (${why}).`)
     throw new Error(`Amazon girişi başarısız: ${why}`)
   }
-  return body.access_token as string
+  cached = { token: body.access_token as string, until: Date.now() + (Number(body.expires_in ?? 3600) - 120) * 1000 }
+  return cached.token
 }
 
 async function fetchWindow(token: string, from: number, to: number, deadline: number) {

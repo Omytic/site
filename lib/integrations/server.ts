@@ -37,7 +37,9 @@ export function istanbulDate(ms: number) {
 }
 
 /** Senkron uçlarının ortak gövdesi: yetki, sync_runs kaydı, hata yönetimi. */
-export async function runSync(req: Request, channel: 'trendyol' | 'hepsiburada' | 'amazon', fn: (db: SupabaseClient, opts: { days?: number }) => Promise<SyncResult>) {
+export type SyncFn = (db: SupabaseClient, opts: { days?: number }) => Promise<SyncResult>
+
+export async function runSync(req: Request, channel: string, fn: SyncFn) {
   let db
   try {
     db = adminClient()
@@ -49,18 +51,28 @@ export async function runSync(req: Request, channel: 'trendyol' | 'hepsiburada' 
 
   const url = new URL(req.url)
   const days = url.searchParams.get('days') ? Math.max(1, Math.min(90, Number(url.searchParams.get('days')))) : undefined
+  const out = await recordRun(db, channel, who.userId, () => fn(db, { days }))
+  return NextResponse.json(out, { status: out.ok ? 200 : 502 })
+}
 
-  const { data: run } = await db.from('sync_runs').insert({ channel, triggered_by: who.userId }).select('id').single()
+/** Bir senkronu çalıştırır ve sonucunu sync_runs'a yazar (Entegrasyonlar sayfasında görünür). */
+export async function recordRun(db: SupabaseClient, channel: string, userId: string | null, go: () => Promise<SyncResult>) {
+  const { data: run } = await db.from('sync_runs').insert({ channel, triggered_by: userId }).select('id').single()
   try {
-    const r = await fn(db, { days })
+    const r = await go()
     const message = [r.more ? 'devamı var' : '', r.linked ? `${r.linked} sipariş elle girilmiş kayda bağlandı` : '', r.unmatched.length ? `${r.unmatched.length} ürün kodu eşleşmedi` : ''].filter(Boolean).join(' · ') || null
     await db
       .from('sync_runs')
       .update({ status: 'tamam', finished_at: new Date().toISOString(), range_from: r.from, range_to: r.to, fetched: r.fetched, imported: r.imported, updated: r.updated, skipped: r.skipped, message })
       .eq('id', run?.id)
-    return NextResponse.json({ ok: true, ...r })
+    return { ok: true as const, channel, ...r }
   } catch (e: any) {
+    // Gece senkronunda anahtarı henüz girilmemiş bağlantı hata sayılmaz, iz bırakmaz
+    if (!userId && /tanımlı değil/.test(String(e?.message))) {
+      await db.from('sync_runs').delete().eq('id', run?.id)
+      return { ok: false as const, channel, skipped: true, message: String(e.message) }
+    }
     await db.from('sync_runs').update({ status: 'hata', finished_at: new Date().toISOString(), message: String(e?.message ?? e).slice(0, 500) }).eq('id', run?.id)
-    return NextResponse.json({ ok: false, message: e?.message ?? 'Senkron başarısız' }, { status: 502 })
+    return { ok: false as const, channel, message: (e?.message as string) ?? 'Senkron başarısız' }
   }
 }

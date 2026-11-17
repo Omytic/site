@@ -65,9 +65,14 @@ function LoginForm() {
   }
 
   useEffect(() => {
-    // YEREL ÖNİZLEME: giriş ekranı kapalı.
-    router.replace('/admin')
-  }, [router])
+    // YEREL ÖNİZLEME: sadece bilgisayarda `npm run dev` ile giriş ekranı atlanır. Canlı sitede her zaman giriş istenir.
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_LOCAL_PANEL_EMAIL) {
+      router.replace('/admin')
+      return
+    }
+    run(next, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submitPassword = (e: React.FormEvent) => {
     e.preventDefault()

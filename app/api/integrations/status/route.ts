@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { adminClient, authorize } from '@/lib/integrations/server'
 import { trendyolConfigured } from '@/lib/integrations/trendyol'
 import { amazonConfigured } from '@/lib/integrations/amazon'
+import { amazonAdsConfigured } from '@/lib/integrations/amazonAds'
+import { googleAdsConfigured } from '@/lib/integrations/googleAds'
+import { ziraatConfigured } from '@/lib/integrations/ziraat'
+import { hepsiburadaConfigured } from '@/lib/integrations/hepsiburada'
+import { metaAdsConfigured, metaConfigured } from '@/lib/integrations/meta'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,8 +23,13 @@ export async function GET(req: Request) {
   return NextResponse.json({
     serviceRole: true,
     trendyol: trendyolConfigured(),
-    hepsiburada: !!(process.env.HEPSIBURADA_MERCHANT_ID && process.env.HEPSIBURADA_USERNAME && process.env.HEPSIBURADA_PASSWORD),
+    hepsiburada: hepsiburadaConfigured(),
     amazon: amazonConfigured(),
+    meta: metaConfigured(),
+    meta_ads: metaAdsConfigured(),
+    google_ads: googleAdsConfigured(),
+    amazon_ads: amazonAdsConfigured(),
+    ziraat: ziraatConfigured(),
     cron: !!process.env.CRON_SECRET,
   })
 }

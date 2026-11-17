@@ -174,7 +174,7 @@ if (typeof window !== 'undefined') {
   })
 }
 
-const must = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => {
+export const must = async <T,>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>) => {
   const { data, error } = await p
   if (error) throw new Error(error.message)
   return (data ?? []) as T

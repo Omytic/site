@@ -12,12 +12,32 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/sync/amazon",
+      "path": "/api/sync/amazon?part=hepsi",
       "schedule": "20 4 * * *"
     },
     {
       "path": "/api/kur/guncelle",
       "schedule": "0 13 * * 1-5"
+    },
+    {
+      "path": "/api/sync/hepsiburada",
+      "schedule": "40 4 * * *"
+    },
+    {
+      "path": "/api/sync/meta",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/sync/google-ads",
+      "schedule": "15 5 * * *"
+    },
+    {
+      "path": "/api/sync/amazon-ads",
+      "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/sync/banka",
+      "schedule": "45 5 * * *"
     }
   ]
 }

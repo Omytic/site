@@ -14,7 +14,7 @@ const RULES: [string, string][] = [
   ['Otomatik gelen siparişi elle tekrar giremezsiniz.', 'Aynı kanal ve sipariş numarasıyla ikinci kayıt engellenir; kimin, hangi tarihte girdiği uyarıda yazar.'],
   ['Düzenlemeleriniz ezilmez.', 'Otomatik gelen satışı düzenleyebilirsiniz. Senkron yalnızca pazaryerinde durum değişirse (iptal, iade) durumu günceller.'],
   ['Sildiğiniz geri gelmez.', 'Otomatik gelen bir satışı silerseniz stok geri eklenir ve o paket bir daha içe aktarılmaz.'],
-  ['Amazon’a özel:', 'FBA siparişleri Amazon FBA stoğundan, kendi kargonuzla gönderdikleriniz depodan düşer. Komisyon ve kargo Stok → Kanal maliyetleri’ndeki tanımdan otomatik hesaplanır; iadeler bu bağlantıyla gelmez, elle girilir.'],
+  ['Amazon’a özel:', 'FBA siparişleri Amazon FBA stoğundan, kendi kargonuzla gönderdikleriniz depodan düşer. Komisyon ve FBA ücreti önce kanal maliyetinden tahmin edilir; Amazon parayı işleyince (1-2 gün) gerçek kesintiyle değiştirilir. Tamamı iade edilen sipariş “iade” olur. Depolama gibi siparişe bağlı olmayan ücretler Finans’a gider olarak düşer. FBA stoğu, ziyaret ve dönüşüm Amazon sayfasında.'],
   ['Kim ne yaptı görünür.', 'Satışlarda "Giren" sütunu kişiyi ya da "Otomatik · Amazon / Trendyol"u, son düzenleyeni de altında gösterir. Her değişiklik Düzenleme geçmişi’nde.'],
 ]
 
@@ -48,9 +48,18 @@ interface Listing {
 
 const CHANNELS = [
   { id: 'trendyol', name: 'Trendyol', ready: true, how: 'Satıcı paneli → Hesap Bilgilerim → Entegrasyon Bilgileri', env: ['TRENDYOL_SELLER_ID', 'TRENDYOL_API_KEY', 'TRENDYOL_API_SECRET'] },
-  { id: 'hepsiburada', name: 'Hepsiburada', ready: false, how: 'Merchant paneli → Entegrasyon bilgileri', env: ['HEPSIBURADA_MERCHANT_ID', 'HEPSIBURADA_USERNAME', 'HEPSIBURADA_PASSWORD'] },
+  { id: 'hepsiburada', name: 'Hepsiburada', ready: true, how: 'Merchant panel → Yardım Merkezi → Talepler → “API Entegratör Yetkilendirme” talebi; Hepsiburada geliştirici kullanıcı adı ve servis anahtarı verir', env: ['HEPSIBURADA_MERCHANT_ID', 'HEPSIBURADA_USERNAME (geliştirici kullanıcı adı)', 'HEPSIBURADA_PASSWORD (servis anahtarı)'] },
   { id: 'amazon', name: 'Amazon', ready: true, how: 'Solution Provider Portal → uygulama → LWA credentials ve Authorize', env: ['AMAZON_SP_CLIENT_ID', 'AMAZON_SP_CLIENT_SECRET', 'AMAZON_SP_REFRESH_TOKEN'] },
 ] as const
+
+/** Reklam, sosyal medya ve banka bağlantıları (sipariş dışı) */
+const OTHERS = [
+  { id: 'meta', name: 'Meta (Instagram, Facebook, reklam)', path: 'meta', page: '/admin/sosyal', how: 'Business Suite → Ayarlar → Kullanıcılar → Sistem kullanıcıları → token oluştur (ads_read, instagram_basic, instagram_manage_insights, pages_read_engagement)', env: ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID (act_… numarası)'] },
+  { id: 'google_ads', name: 'Google Ads', path: 'google-ads', page: '/admin/kampanyalar', how: 'Google Cloud projesi → Google Ads API erişimi + OAuth istemcisi; reklam hesabı numarası Google Ads sağ üstte', env: ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID'] },
+  { id: 'amazon_ads', name: 'Amazon Ads', path: 'amazon-ads', page: '/admin/kampanyalar', how: 'advertising.amazon.com → Amazon Ads API başvurusu; onaylanan LWA uygulamasıyla refresh token', env: ['AMAZON_ADS_CLIENT_ID', 'AMAZON_ADS_CLIENT_SECRET', 'AMAZON_ADS_REFRESH_TOKEN'] },
+  { id: 'ziraat', name: 'Ziraat Katılım', path: 'banka', page: '/admin/banka', how: 'Banka API erişimi şubeden/kurumsal temsilciden istenir; gelene kadar Banka sayfasına ekstre yapıştırılır', env: ['ZIRAAT_API_URL', 'ZIRAAT_TOKEN_URL', 'ZIRAAT_CLIENT_ID', 'ZIRAAT_CLIENT_SECRET', 'ZIRAAT_CUSTOMER_NO', 'ZIRAAT_BRANCH_ID', 'ZIRAAT_ACCOUNT_SUFFIX'] },
+] as const
+const RUN_CHANNEL: Record<string, string[]> = { meta: ['meta_reklam', 'meta_instagram'], google_ads: ['google_ads'], amazon_ads: ['amazon_ads'], ziraat: ['ziraat'] }
 
 async function token() {
   const { data } = await supabase.auth.getSession()
@@ -121,6 +130,22 @@ export default function IntegrationsPage() {
       toast(e.message, 'error')
       invalidate('sync_runs')
     } finally {
+      setBusy(null)
+    }
+  }
+
+  const syncOther = async (id: string, path: string) => {
+    setBusy(id)
+    try {
+      const res = await fetch(`/api/sync/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}` } })
+      const b = await res.json().catch(() => ({}))
+      const bad = b.ok === false ? b.results?.find((r: any) => !r.ok) ?? b : null
+      if (!res.ok || bad) throw new Error(bad?.message ?? 'Senkron başarısız')
+      toast('Güncellendi.')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      invalidate('sync_runs')
       setBusy(null)
     }
   }
@@ -230,6 +255,56 @@ export default function IntegrationsPage() {
               ) : (
                 <div className="mt-4 text-sm text-ink-soft">
                   <p className="mb-2 text-xs font-semibold text-ink-soft/60">Vercel → Settings → Environment Variables:</p>
+                  <ul className="space-y-1">
+                    {c.env.map((e) => (
+                      <li key={e}>
+                        <code className="rounded-md bg-[#F4F3EF] px-1.5 py-0.5 text-xs">{e}</code>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )
+        })}
+      </div>
+      <h2 className="mb-3 mt-8 font-display text-xl font-black">Reklam, sosyal medya ve banka</h2>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {OTHERS.map((c) => {
+          const configured = status?.[c.id]
+          const run = (runs.data ?? []).find((r) => RUN_CHANNEL[c.id].includes(r.channel))
+          return (
+            <Card key={c.id}>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-display text-lg font-black leading-tight">{c.name}</p>
+                {status === null ? <Skeleton className="h-6 w-20" /> : configured ? <StatusPill tone="good">Bağlı</StatusPill> : <StatusPill tone="warning">Anahtar bekleniyor</StatusPill>}
+              </div>
+              <p className="mt-1 text-xs text-ink-soft/60">{c.how}</p>
+              {configured ? (
+                <>
+                  <div className="mt-3 rounded-xl bg-[#F7F6F2] p-3 text-sm">
+                    {run ? (
+                      <p className="flex items-center gap-2">
+                        {run.status === 'tamam' ? <CheckCircle2 className="h-4 w-4 text-[#0a7d0a]" /> : run.status === 'hata' ? <XCircle className="h-4 w-4 text-[#b83030]" /> : <Clock className="h-4 w-4" />}
+                        Son güncelleme {relTime(run.started_at)}
+                      </p>
+                    ) : (
+                      <p className="text-ink-soft/70">Henüz çalışmadı.</p>
+                    )}
+                    {run?.status === 'hata' && <p className="mt-1 text-xs text-[#a32a2a]">{run.message}</p>}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" loading={busy === c.id} icon={<RefreshCw className="h-4 w-4" />} onClick={() => syncOther(c.id, c.path)}>
+                      Şimdi güncelle
+                    </Button>
+                    <a href={c.page} className="inline-flex h-9 items-center rounded-xl px-3 text-sm font-semibold text-ink-soft hover:bg-black/5">
+                      Sayfaya git →
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 text-sm text-ink-soft">
+                  <p className="mb-2 text-xs font-semibold text-ink-soft/60">Vercel → Environment Variables:</p>
                   <ul className="space-y-1">
                     {c.env.map((e) => (
                       <li key={e}>
