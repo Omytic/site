@@ -12,8 +12,12 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/sync/amazon?part=hepsi",
+      "path": "/api/sync/amazon?part=siparis",
       "schedule": "20 4 * * *"
+    },
+    {
+      "path": "/api/sync/amazon?part=diger",
+      "schedule": "35 4 * * *"
     },
     {
       "path": "/api/kur/guncelle",

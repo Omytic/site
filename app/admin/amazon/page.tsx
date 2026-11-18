@@ -373,7 +373,7 @@ export default function AmazonPage() {
               </p>
             )}
             <p className="border-t border-line px-5 py-3 text-xs text-ink-soft/60">
-              Fark varsa: ya bir satış/sevkiyat panele girilmemiş, ya Amazon ürünü kaybetmiş ya da hasarlı ayırmış. “Eşitle” paneli Amazon’un sayısına çeker ve farkı sayım düzeltmesi olarak kaydeder.
+              Fark varsa: ya bir satış/sevkiyat panele girilmemiş, ya Amazon ürünü kaybetmiş ya da hasarlı ayırmış. “Eşitle” paneli Amazon’un sayısına çeker ve farkı sayım düzeltmesi olarak kaydeder. <b>FormStep</b> ürünlerinin Amazon stoğu her senkronda kendiliğinden eşitlenir; depo ve elinizdeki diğer stoklar elle girilir.
             </p>
           </Card>
         </>

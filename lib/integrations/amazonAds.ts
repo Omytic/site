@@ -13,7 +13,9 @@ import type { SyncResult } from './importer'
  */
 
 const ADS = process.env.AMAZON_ADS_ENDPOINT || 'https://advertising-api-eu.amazon.com'
-const LWA = process.env.AMAZON_ADS_LWA_URL || 'https://api.amazon.com/auth/o2/token'
+// Avrupa (Türkiye) reklam hesapları için LWA token adresi
+export const ADS_LWA = process.env.AMAZON_ADS_LWA_URL || 'https://api.amazon.co.uk/auth/o2/token'
+const LWA = ADS_LWA
 const DAY = 86_400_000
 
 export const amazonAdsConfigured = () => !!(process.env.AMAZON_ADS_CLIENT_ID && process.env.AMAZON_ADS_CLIENT_SECRET && process.env.AMAZON_ADS_REFRESH_TOKEN)

@@ -131,6 +131,9 @@ export async function syncAmazonInventory(db: SupabaseClient): Promise<SyncResul
   const r = emptyResult(started, Date.now())
   r.fetched = rows.length
   r.imported = rows.length
+  // Bütün stoğu Amazon'a gönderilen markalarda (varsayılan FormStep) panelin "Amazon FBA" stoğu Amazon'un sayısına kendiliğinden eşitlenir.
+  // Depo, ev vb. diğer yerlere dokunulmaz; onlar elle girilir.
+  if (rows.length) r.updated = await autoAlign(db, rows)
   r.unmatched = rows.filter((x) => !x.parts).map((x) => String(x.sku))
   if (r.unmatched.length) {
     await db.from('sync_unmatched').upsert(
@@ -139,6 +142,41 @@ export async function syncAmazonInventory(db: SupabaseClient): Promise<SyncResul
     )
   }
   return r
+}
+
+/** AMAZON_AUTO_STOCK_BRANDS: virgülle markalar (varsayılan "formstep"); "yok" yazılırsa kapalı */
+export const autoStockBrands = () => {
+  const v = (process.env.AMAZON_AUTO_STOCK_BRANDS ?? 'formstep').trim().toLowerCase()
+  return v === '' || v === 'yok' ? [] : v.split(',').map((x) => x.trim()).filter(Boolean)
+}
+
+async function autoAlign(db: SupabaseClient, rows: Record<string, unknown>[]) {
+  const brands = autoStockBrands()
+  if (!brands.length) return 0
+  // Amazon'da satılabilir (müşteri siparişine ayrılanlar hariç: onlar panelde satışla zaten düştü)
+  const az = new Map<string, number>()
+  for (const r of rows) {
+    for (const p of (r.parts as { item_id: string; qty: number }[] | null) ?? []) {
+      az.set(p.item_id, (az.get(p.item_id) ?? 0) + (Number(r.fulfillable) + Number(r.reserved_other)) * Number(p.qty))
+    }
+  }
+  if (!az.size) return 0
+  const ids = Array.from(az.keys())
+  const [{ data: items, error: e1 }, { data: levels, error: e2 }] = await Promise.all([
+    db.from('items').select('id,brand').in('id', ids).in('brand', brands),
+    db.from('stock_levels').select('item_id,qty').eq('location_id', 'amazon').in('item_id', ids),
+  ])
+  if (e1 || e2) throw new Error((e1 ?? e2)!.message)
+  const panel = new Map((levels ?? []).map((l) => [l.item_id, Number(l.qty)]))
+  const moves = (items ?? [])
+    .map((i) => ({ item_id: i.id, diff: Math.round(((az.get(i.id) ?? 0) - (panel.get(i.id) ?? 0)) * 100) / 100 }))
+    .filter((m) => m.diff !== 0)
+    .map((m) => ({ item_id: m.item_id, location_id: 'amazon', qty: m.diff, kind: 'sayim', note: 'Amazon FBA stoğuna otomatik eşitlendi', created_by: null }))
+  if (moves.length) {
+    const { error } = await db.from('stock_movements').insert(moves)
+    if (error) throw new Error(error.message)
+  }
+  return moves.length
 }
 
 /* ------------------------------------------------------------------ */
