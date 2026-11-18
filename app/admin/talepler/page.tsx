@@ -141,6 +141,21 @@ export default function LeadsPage() {
                       {l.company && <span className="text-sm text-ink-soft">{l.name}</span>}
                       <span className="rounded-full bg-[#F4F3EF] px-2 py-0.5 text-[11px] font-semibold text-ink-soft">{label(KINDS, l.kind)}</span>
                       {l.brand && <span className="text-[11px] font-semibold text-ink-soft/60">{label(BRANDS_WITH_GENEL, l.brand)}</span>}
+                      {l.party_id ? (
+                        <Link href={`/admin/cariler/${l.party_id}`} onClick={(e) => e.stopPropagation()} className="text-[11px] font-bold text-[#1d5fb0] hover:underline">
+                          Cari kartı →
+                        </Link>
+                      ) : (
+                        ['kazanildi', 'teklif', 'numune'].includes(l.status) && (
+                          <Link
+                            href={`/admin/cariler?yeni=1&${new URLSearchParams({ ad: l.company || l.name, kisi: l.company ? l.name : '', tel: l.phone ?? '', eposta: l.email ?? '', sehir: l.city ?? '', adres: l.address ?? '' }).toString()}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] font-bold text-[#1d5fb0] hover:underline"
+                          >
+                            + Cari kartı aç
+                          </Link>
+                        )
+                      )}
                     </p>
                     <p className="mt-0.5 text-xs text-ink-soft/60">
                       {label(SOURCES, l.source)}

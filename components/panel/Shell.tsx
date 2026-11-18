@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -44,6 +44,7 @@ const NAV: NavSection[] = [
     pages: [
       { href: '/admin/satislar', label: 'Satışlar', icon: ShoppingBag, hint: 'Bütün kanallardan satışlar' },
       { href: '/admin/talepler', label: 'Talepler', icon: Inbox, hint: 'Teklif, numune, müşteri adayları' },
+      { href: '/admin/cariler', label: 'Cariler', icon: Building2, hint: 'Müşteri ve tedarikçi firmalar' },
       { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus, hint: 'Mal alımları ve maliyet' },
       { href: '/admin/stok', label: 'Stok', icon: Boxes, hint: 'Depo, yolda, Amazon' },
       { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag, hint: 'Fiyat, maliyet, varyantlar' },
@@ -143,6 +144,7 @@ const QUICK = [
   { href: '/admin/reklam?yeni=1', label: 'Reklam harcaması', icon: Megaphone },
   { href: '/admin/isler?yeni=1', label: 'İş', icon: ListChecks },
   { href: '/admin/talepler?yeni=1', label: 'Talep / müşteri adayı', icon: Inbox },
+  { href: '/admin/cariler?yeni=1', label: 'Cari (müşteri / tedarikçi)', icon: Building2 },
   { href: '/admin/isbirlikleri?yeni=1', label: 'İş birliği', icon: Handshake },
   { href: '/admin/faturalar?yeni=1', label: 'Fatura', icon: FileText },
 ]

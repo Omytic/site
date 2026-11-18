@@ -10,6 +10,7 @@ import { dateTR, lastMonths, money, monthKey, monthLabel, norm, num, tl, today }
 import { BarChart, HBars, Legend } from '@/components/panel/charts'
 import { LinesSummary } from '@/components/panel/LinesSummary'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
+import { PartyNameInput } from '@/components/panel/parties'
 import { CurrencyBar } from '@/components/panel/CurrencyBar'
 import { useFxRate, type Currency } from '@/lib/panel/fx'
 import { Button, Card, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Select, Skeleton, Stat, StatusPill, Table, Textarea, UserDot, useUi } from '@/components/panel/ui'
@@ -23,7 +24,11 @@ export default function PurchasesPage() {
   const { toast, confirm } = useUi()
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<Purchase | 'new' | null>(null)
-  useOpenFromQuery(() => setEditing('new'))
+  const [preset, setPreset] = useState('')
+  useOpenFromQuery((p) => {
+    setPreset(p.get('cari') ?? '')
+    setEditing('new')
+  })
 
   const list = useMemo(
     () => (purchases.data ?? []).filter((p) => !q || norm(`${p.supplier ?? ''} ${p.invoice_no ?? ''} ${p.note ?? ''}`).includes(norm(q))),
@@ -175,16 +180,16 @@ export default function PurchasesPage() {
         </div>
       </Card>
 
-      {editing && items && <PurchaseForm purchase={editing === 'new' ? null : editing} items={items} onClose={() => setEditing(null)} />}
+      {editing && items && <PurchaseForm purchase={editing === 'new' ? null : editing} preset={editing === 'new' ? preset : ''} items={items} onClose={() => (setEditing(null), setPreset(''))} />}
     </>
   )
 }
 
-function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null; items: NonNullable<ReturnType<typeof useItemsWithStock>['data']>; onClose: () => void }) {
+function PurchaseForm({ purchase, preset = '', items, onClose }: { purchase: Purchase | null; preset?: string; items: NonNullable<ReturnType<typeof useItemsWithStock>['data']>; onClose: () => void }) {
   const { toast } = useUi()
   const [f, setF] = useState({
     purchase_date: purchase?.purchase_date ?? today(),
-    supplier: purchase?.supplier ?? '',
+    supplier: purchase?.supplier ?? preset,
     invoice_no: purchase?.invoice_no ?? '',
     shipping_cost: purchase ? String(purchase.shipping_cost) : '',
     payment_status: purchase?.payment_status ?? 'odendi',
@@ -284,7 +289,7 @@ function PurchaseForm({ purchase, items, onClose }: { purchase: Purchase | null;
             <Input type="date" required value={f.purchase_date} onChange={(e) => set({ purchase_date: e.target.value })} />
           </Field>
           <Field label="Tedarikçi" className="sm:col-span-2">
-            <Input value={f.supplier} onChange={(e) => set({ supplier: e.target.value })} placeholder="Firma adı" />
+            <PartyNameInput value={f.supplier} onChange={(v) => set({ supplier: v })} placeholder="Firma adı" kind="tedarikci" />
           </Field>
           <Field label="Fatura no">
             <Input value={f.invoice_no} onChange={(e) => set({ invoice_no: e.target.value })} />

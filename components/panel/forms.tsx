@@ -10,12 +10,12 @@ import { num, tl } from '@/lib/panel/format'
 import { Button, cx, Input, Select, useUi } from './ui'
 
 /** ?yeni=1 ile gelinirse formu aç, sonra adres çubuğunu temizle. */
-export function useOpenFromQuery(open: () => void) {
+export function useOpenFromQuery(open: (params: URLSearchParams) => void) {
   const params = useSearchParams()
   const router = useRouter()
   useEffect(() => {
     if (params.get('yeni') === '1') {
-      open()
+      open(new URLSearchParams(params.toString()))
       router.replace(window.location.pathname)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

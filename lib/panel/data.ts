@@ -26,14 +26,14 @@ export interface Sale {
   payment_status: 'odendi' | 'bekliyor'; due_date: string | null; note: string | null
   created_at: string; created_by: string | null; sale_items: SaleItem[]
   external_ref?: string | null; updated_at?: string; updated_by?: string | null
-  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null; party_id?: string | null
 }
 export interface PurchaseItem { id?: string; item_id: string; qty: number; unit_cost: number; location_id?: LocationId; fx_unit_cost?: number | null }
 export interface Purchase {
   id: string; purchase_date: string; supplier: string | null; invoice_no: string | null; shipping_cost: number
   payment_status: 'odendi' | 'bekliyor'; due_date: string | null; note: string | null
   created_at: string; created_by: string | null; purchase_items: PurchaseItem[]
-  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null; party_id?: string | null
 }
 export interface ShipmentItem { id?: string; item_id: string; qty: number }
 export interface Shipment {
@@ -55,7 +55,7 @@ export interface Transaction {
   id: string; tx_date: string; direction: 'gelir' | 'gider'; category: string; amount: number; brand: BrandOrGenel
   channel: string | null; counterparty: string | null; payment_status: 'odendi' | 'bekliyor'; due_date: string | null
   note: string | null; created_at: string; created_by: string | null; fair_id?: string | null
-  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null; fx_amount?: number | null
+  currency?: 'TRY' | 'USD' | 'EUR'; fx_rate?: number | null; fx_amount?: number | null; party_id?: string | null
 }
 export interface SaleLine {
   sale_id: string; sale_date: string; channel: Channel; status: string; item_id: string; brand: Brand
@@ -93,14 +93,42 @@ export interface Lead {
   id: string; source: string; kind: string; brand: BrandOrGenel | null; name: string; company: string | null; phone: string | null
   email: string | null; city: string | null; address: string | null; message: string | null; status: string; owner: string | null
   next_date: string | null; fair_id: string | null; sample_sent_at: string | null; note: string | null; created_at: string
-  updated_at: string; updated_by: string | null; lead_items: { id?: string; item_id: string; qty: number }[]
+  updated_at: string; updated_by: string | null; lead_items: { id?: string; item_id: string; qty: number }[]; party_id?: string | null
 }
 export interface Invoice {
   id: string; inv_date: string; kind: string; issuer: string | null; number: string | null; counterparty: string | null
   amount: number | null; vat: number | null; brand: BrandOrGenel | null; file_path: string | null; file_name: string | null
-  file_size: number | null; note: string | null; created_at: string; created_by: string | null
+  file_size: number | null; note: string | null; created_at: string; created_by: string | null; party_id?: string | null
 }
 export interface AssetMetric { id: string; asset_id: string; metric_date: string; followers: number }
+export type PartyKind = 'musteri' | 'tedarikci' | 'ikisi'
+export interface Party {
+  id: string; name: string; kind: PartyKind; segment: string | null; brands: string[]; status: 'aktif' | 'pasif'
+  contact_name: string | null; phone: string | null; email: string | null; website: string | null; instagram: string | null
+  city: string | null; district: string | null; address: string | null; tax_office: string | null; tax_no: string | null; iban: string | null
+  payment_days: number | null; discount_pct: number | null; price_note: string | null; tags: string[]; note: string | null
+  created_at: string; updated_at: string; created_by: string | null; updated_by: string | null
+}
+export interface PartySummary {
+  party_id: string; sale_count: number; revenue: number; last_sale: string | null; receivable: number; overdue: number
+  purchase_count: number; spent: number; last_purchase: string | null; payable: number; last_activity: string | null; next_date: string | null
+}
+export interface PartyContact { id: string; party_id: string; name: string; role: string | null; phone: string | null; email: string | null; note: string | null; created_at: string }
+export interface PartyNote { id: string; party_id: string; kind: string; body: string; next_date: string | null; done: boolean; created_at: string; created_by: string | null }
+export interface PartyAgreement {
+  id: string; party_id: string; title: string; brand: string | null; start_date: string | null; end_date: string | null; terms: string | null
+  status: 'taslak' | 'aktif' | 'bitti'; file_path: string | null; file_name: string | null; file_size: number | null
+  created_at: string; updated_at: string; created_by: string | null
+}
+export interface PartyDetail extends Party { party_contacts: PartyContact[]; party_notes: PartyNote[]; party_agreements: PartyAgreement[] }
+/** Veritabanındaki norm_name ile aynı: "Gezer Ayakkabı San. ve Tic. Ltd. Şti." = "gezerayakkabi" */
+export const partyKey = (s: string | null | undefined) =>
+  (s ?? '')
+    .replace(/[ıİşŞğĞüÜöÖçÇâÂîÎ]/g, (c) => ({ ı: 'i', İ: 'i', ş: 's', Ş: 's', ğ: 'g', Ğ: 'g', ü: 'u', Ü: 'u', ö: 'o', Ö: 'o', ç: 'c', Ç: 'c', â: 'a', Â: 'a', î: 'i', Î: 'i' })[c] ?? c)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(ltd|sti|as|a s|tic|san|ve|limited|sirketi|anonim|ticaret|sanayi)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, '')
 export interface AuditRow {
   id: number; at: string; user_id: string | null; table_name: string; row_id: string | null
   action: 'INSERT' | 'UPDATE' | 'DELETE'; old_data: Record<string, any> | null; new_data: Record<string, any> | null
@@ -229,6 +257,12 @@ export const Q = {
   fairs: () => useQuery('fairs', () => must<Fair[]>(supabase.from('fairs').select('*').order('start_date'))),
   assets: () => useQuery('assets', () => must<Asset[]>(supabase.from('assets').select('*').order('brand').order('name'))),
   assetMetrics: () => useQuery('asset_metrics', () => must<AssetMetric[]>(supabase.from('asset_metrics').select('*').order('metric_date'))),
+  parties: () => useQuery('parties', () => must<Party[]>(supabase.from('parties').select('*').order('name'))),
+  partySummary: () => useQuery('party_summary', () => must<PartySummary[]>(supabase.from('party_summary').select('*'))),
+  party: (id: string) =>
+    useQuery(`party:${id}`, () =>
+      must<PartyDetail>(supabase.from('parties').select('*, party_contacts(*), party_notes(*), party_agreements(*)').eq('id', id).maybeSingle() as any),
+    ),
   channelCosts: () => useQuery('channel_costs', () => must<ChannelCost[]>(supabase.from('channel_costs').select('*').order('channel'))),
   audit: (limit = 300) =>
     useQuery(`audit:${limit}`, () => must<AuditRow[]>(supabase.from('audit_log').select('*').order('at', { ascending: false }).limit(limit))),
@@ -236,21 +270,22 @@ export const Q = {
 
 /** Bir kayıt değişince etkilenen her şey. */
 export const AFTER = {
-  sale: ['sales', 'sale_lines', 'stock', 'movements', 'ledger', 'items', 'audit:300', 'audit:40'],
-  purchase: ['purchases', 'stock', 'movements', 'ledger', 'items', 'audit:300', 'audit:40'],
+  sale: ['party_summary', 'sales', 'sale_lines', 'stock', 'movements', 'ledger', 'items', 'audit:300', 'audit:40'],
+  purchase: ['party_summary', 'purchases', 'stock', 'movements', 'ledger', 'items', 'audit:300', 'audit:40'],
   shipment: ['shipments', 'stock', 'movements', 'ledger', 'audit:300', 'audit:40'],
   stock: ['stock', 'movements', 'audit:300', 'audit:40'],
   item: ['items', 'stock', 'audit:300', 'audit:40'],
-  money: ['transactions', 'ledger', 'audit:300', 'audit:40'],
+  money: ['party_summary', 'transactions', 'ledger', 'audit:300', 'audit:40'],
   ads: ['ad_budgets', 'ad_spend', 'ledger', 'audit:300', 'audit:40'],
   tasks: ['tasks', 'audit:300', 'audit:40'],
   assets: ['assets', 'asset_metrics', 'audit:300', 'audit:40'],
   costs: ['channel_costs', 'audit:300', 'audit:40'],
   fairs: ['fairs', 'audit:300', 'audit:40'],
-  fair: ['fairs', 'fair_items', 'sales', 'sale_lines', 'stock', 'movements', 'ledger', 'transactions', 'items', 'audit:300', 'audit:40'],
+  fair: ['party_summary', 'fairs', 'fair_items', 'sales', 'sale_lines', 'stock', 'movements', 'ledger', 'transactions', 'items', 'audit:300', 'audit:40'],
   collabs: ['collaborations', 'stock', 'movements', 'ad_spend', 'ledger', 'audit:300', 'audit:40'],
-  leads: ['leads', 'stock', 'movements', 'audit:300', 'audit:40'],
-  invoices: ['invoices', 'audit:300', 'audit:40'],
+  leads: ['party_summary', 'leads', 'stock', 'movements', 'audit:300', 'audit:40'],
+  invoices: ['party_summary', 'invoices', 'audit:300', 'audit:40'],
+  parties: ['parties', 'party_summary', 'sales', 'purchases', 'transactions', 'invoices', 'leads', 'audit:300', 'audit:40'],
 }
 
 /** Supabase yazma işlemini çalıştırır, hata varsa Türkçe mesajla fırlatır. */

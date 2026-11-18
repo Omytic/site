@@ -22,6 +22,7 @@ import { BarChart, HBars, Legend, ShareBar, Waterfall } from '@/components/panel
 import { CurrencyBar } from '@/components/panel/CurrencyBar'
 import { symOf, useFxRate, type Currency } from '@/lib/panel/fx'
 import { useOpenFromQuery } from '@/components/panel/forms'
+import { PartyNameInput } from '@/components/panel/parties'
 import { Badge, Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, useShowMore, useUi } from '@/components/panel/ui'
 
 type Period = 'ay' | '3ay' | 'yil' | '12ay' | 'tumu'
@@ -465,7 +466,7 @@ function TxForm({ tx, onClose }: { tx: Transaction | null; onClose: () => void }
           </Field>
         </div>
         <Field label={f.direction === 'gelir' ? 'Kimden' : 'Kime'}>
-          <Input value={f.counterparty} onChange={(e) => set({ counterparty: e.target.value })} />
+          <PartyNameInput value={f.counterparty} onChange={(v) => set({ counterparty: v })} placeholder="Firma ya da kişi" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Durum">

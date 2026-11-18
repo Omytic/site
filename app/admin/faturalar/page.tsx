@@ -7,6 +7,7 @@ import { BRANDS_WITH_GENEL, colorOf, label, type BrandOrGenel } from '@/lib/pane
 import { AFTER, invalidate, Q, write, type Invoice } from '@/lib/panel/data'
 import { dateTR, monthKey, monthLabel, norm, num, sum, tl, today } from '@/lib/panel/format'
 import { useOpenFromQuery } from '@/components/panel/forms'
+import { PartyNameInput } from '@/components/panel/parties'
 import { Badge, Button, Card, cx, Drawer, Empty, Field, Input, PageHeader, Select, Skeleton, Stat, Textarea, useUi } from '@/components/panel/ui'
 
 const KINDS = [
@@ -31,7 +32,11 @@ export default function InvoicesPage() {
   const [drag, setDrag] = useState(false)
   const [uploading, setUploading] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
-  useOpenFromQuery(() => setForm('new'))
+  const [preset, setPreset] = useState('')
+  useOpenFromQuery((p) => {
+    setPreset(p.get('cari') ?? '')
+    setForm('new')
+  })
 
   const all = invoices.data ?? []
   const issuers = Array.from(new Set(all.map((i) => i.issuer).filter(Boolean))) as string[]
@@ -246,19 +251,19 @@ export default function InvoicesPage() {
           </div>
         )}
       </Card>
-      {form && <InvoiceForm invoice={form === 'new' ? null : form} issuers={issuers} onClose={() => setForm(null)} onOpen={open} />}
+      {form && <InvoiceForm invoice={form === 'new' ? null : form} preset={form === 'new' ? preset : ''} issuers={issuers} onClose={() => (setForm(null), setPreset(''))} onOpen={open} />}
     </>
   )
 }
 
-function InvoiceForm({ invoice, issuers, onClose, onOpen }: { invoice: Invoice | null; issuers: string[]; onClose: () => void; onOpen: (i: Invoice) => void }) {
+function InvoiceForm({ invoice, preset = '', issuers, onClose, onOpen }: { invoice: Invoice | null; preset?: string; issuers: string[]; onClose: () => void; onOpen: (i: Invoice) => void }) {
   const { toast, confirm } = useUi()
   const [f, setF] = useState({
     inv_date: invoice?.inv_date ?? today(),
     kind: invoice?.kind ?? 'satis',
     issuer: invoice?.issuer ?? '',
     number: invoice?.number ?? '',
-    counterparty: invoice?.counterparty ?? '',
+    counterparty: invoice?.counterparty ?? preset,
     amount: invoice?.amount != null ? String(Number(invoice.amount)) : '',
     vat: invoice?.vat != null ? String(Number(invoice.vat)) : '',
     brand: (invoice?.brand ?? '') as BrandOrGenel | '',
@@ -342,7 +347,7 @@ function InvoiceForm({ invoice, issuers, onClose, onOpen }: { invoice: Invoice |
             </Select>
           </Field>
           <Field label="Karşı taraf" className="col-span-2">
-            <Input value={f.counterparty} onChange={(e) => set({ counterparty: e.target.value })} placeholder="Müşteri ya da tedarikçi" />
+            <PartyNameInput value={f.counterparty} onChange={(v) => set({ counterparty: v })} placeholder="Müşteri ya da tedarikçi" />
           </Field>
           <Field label="Fatura no">
             <Input value={f.number} onChange={(e) => set({ number: e.target.value })} />

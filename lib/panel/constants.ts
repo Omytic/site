@@ -157,6 +157,10 @@ export const TABLE_LABELS: Record<string, string> = {
   settings: 'Site ayarları',
   channel_listings: 'Pazaryeri eşleştirmesi',
   channel_costs: 'Kanal maliyeti',
+  parties: 'Cari kartı',
+  party_contacts: 'Cari kişisi',
+  party_notes: 'Cari notu',
+  party_agreements: 'Cari anlaşması',
 }
 
 export const label = <T extends { id: string; label: string }>(list: readonly T[], id: string | null | undefined) =>

@@ -5,7 +5,8 @@ import { Pencil, ShoppingBag, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { CHANNELS, colorOf, label, PAYMENT_STATUS, productImage, SALE_STATUS, type Channel } from '@/lib/panel/constants'
-import { AFTER, estimateCosts, invalidate, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
+import { AFTER, estimateCosts, invalidate, partyKey, Q, useItemsWithStock, write, type Sale } from '@/lib/panel/data'
+import { PartyNameInput } from '@/components/panel/parties'
 import { addDays, dateTimeTR, dateTR, relTime, lastMonths, money, monthKey, monthLabel, norm, num, tl, today } from '@/lib/panel/format'
 import { BarChart, CalendarHeat, Legend } from '@/components/panel/charts'
 import { emptyLine, LinesEditor, realLines, useOpenFromQuery, type Line } from '@/components/panel/forms'
@@ -26,8 +27,12 @@ export default function SalesPage() {
   const [channel, setChannel] = useState<'all' | Channel>('all')
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<Sale | 'new' | null>(null)
+  const [preset, setPreset] = useState('')
   const page = useShowMore(50)
-  useOpenFromQuery(() => setEditing('new'))
+  useOpenFromQuery((p) => {
+    setPreset(p.get('cari') ?? '')
+    setEditing('new')
+  })
 
   const list = useMemo(() => {
     const from = range === 'all' ? '0000' : addDays(today(), -Number(range))
@@ -242,23 +247,26 @@ export default function SalesPage() {
         <ShowMore shown={Math.min(page.n, list.length)} total={list.length} onMore={page.more} />
       </Card>
 
-      {editing && items && <SaleForm sale={editing === 'new' ? null : editing} items={items} onClose={() => setEditing(null)} />}
+      {editing && items && <SaleForm sale={editing === 'new' ? null : editing} preset={editing === 'new' ? preset : ''} items={items} onClose={() => (setEditing(null), setPreset(''))} />}
     </>
   )
 }
 
-function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNullable<ReturnType<typeof useItemsWithStock>['data']>; onClose: () => void }) {
+function SaleForm({ sale, preset = '', items, onClose }: { sale: Sale | null; preset?: string; items: NonNullable<ReturnType<typeof useItemsWithStock>['data']>; onClose: () => void }) {
   const { toast } = useUi()
+  // Cari kartından "Satış gir" ile gelindiyse: firma adı dolu, kanal toptan, vadesi varsa ödeme bekliyor + vade günü
+  const presetParty = (Q.parties().data ?? []).find((p) => preset && partyKey(p.name) === partyKey(preset))
+  const presetDays = presetParty?.payment_days ?? null
   const [f, setF] = useState({
     sale_date: sale?.sale_date ?? today(),
-    channel: (sale?.channel ?? 'trendyol') as Channel,
+    channel: (sale?.channel ?? (preset ? 'toptan' : 'trendyol')) as Channel,
     order_no: sale?.order_no ?? '',
-    customer: sale?.customer ?? '',
+    customer: sale?.customer ?? preset,
     status: sale?.status ?? 'tamamlandi',
     commission: sale ? String(sale.commission) : '',
     shipping_cost: sale ? String(sale.shipping_cost) : '',
-    payment_status: sale?.payment_status ?? 'odendi',
-    due_date: sale?.due_date ?? '',
+    payment_status: sale?.payment_status ?? (presetDays ? 'bekliyor' : 'odendi'),
+    due_date: sale?.due_date ?? (presetDays ? addDays(today(), presetDays) : ''),
     note: sale?.note ?? '',
   })
   // Para birimi: dolar/euro ile satışta fiyat o dövizde girilir, satış gününün TCMB döviz alış kuruyla TL'ye çevrilir
@@ -418,7 +426,7 @@ function SaleForm({ sale, items, onClose }: { sale: Sale | null; items: NonNulla
             <Input value={f.order_no} onChange={(e) => set({ order_no: e.target.value })} placeholder="İsteğe bağlı" />
           </Field>
           <Field label="Müşteri" className="sm:col-span-2">
-            <Input value={f.customer} onChange={(e) => set({ customer: e.target.value })} placeholder="Toptan satışlarda firma adı" />
+            <PartyNameInput value={f.customer} onChange={(v) => set({ customer: v })} placeholder="Toptan satışlarda firma adı" kind="musteri" />
           </Field>
         </div>
 
