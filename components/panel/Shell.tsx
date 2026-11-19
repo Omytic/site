@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2 } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2, Sunrise } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -83,6 +83,7 @@ const NAV: NavSection[] = [
     icon: Settings,
     pages: [
       { href: '/admin/entegrasyonlar', label: 'Entegrasyonlar', icon: Plug, hint: 'Trendyol, Amazon bağlantıları' },
+      { href: '/admin/sabah-ozeti', label: 'Sabah özeti', icon: Sunrise, hint: 'Her sabah WhatsApp ve e-postaya giden özet' },
       { href: '/admin/vitrin', label: 'Site vitrini', icon: Store, hint: 'Sitede görünen ürünler' },
       { href: '/admin/site-ayarlari', label: 'Site ayarları', icon: Settings, hint: 'İletişim, metinler' },
       { href: '/admin/gecmis', label: 'Düzenleme geçmişi', icon: History, hint: 'Kim neyi değiştirdi' },

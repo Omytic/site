@@ -39,21 +39,23 @@ export default function ShipmentsPage() {
   const received = all.filter((s) => s.status === 'teslim_alindi' && s.received_date)
   const avgLead = received.length ? received.reduce((a, s) => a + daysBetween(s.ship_date, s.received_date!), 0) / received.length : null
 
-  // Öneri: son 30 gün Amazon hızına göre 30 günlük stok
+  // Öneri: Amazon satış hızı (son 30 gün ağırlıklı, 90 günle dengelenmiş); yol süresi + 30 günlük stok
+  const transit = avgLead === null ? 10 : Math.round(avgLead)
   const suggestion = useMemo(() => {
     if (!items || !lines.data) return []
-    const v = velocities(lines.data, 30)
+    const v30 = velocities(lines.data, 30)
+    const v90 = velocities(lines.data, 90)
     return items
       .map((i) => {
-        const perDay = v.get(i.id)?.amazon ?? 0
-        const pipe = i.stock.amazon + i.stock.yolda
-        const want = Math.ceil(perDay * 30 - pipe)
+        const perDay = (v30.get(i.id)?.amazon ?? 0) * 0.6 + (v90.get(i.id)?.amazon ?? 0) * 0.4
+        const pipe = Math.max(0, i.stock.amazon) + Math.max(0, i.stock.yolda)
+        const want = Math.ceil(perDay * (transit + 30) - pipe)
         const can = Math.min(want, Math.floor(i.stock.depo))
         return { i, perDay, pipe, want, can, days: perDay > 0 ? pipe / perDay : null }
       })
       .filter((x) => x.want > 0 && x.can > 0)
       .sort((a, b) => (a.days ?? 0) - (b.days ?? 0))
-  }, [items, lines.data])
+  }, [items, lines.data, transit])
 
   const advance = async (s: Shipment, status: string) => {
     try {
@@ -102,7 +104,7 @@ export default function ShipmentsPage() {
               <p className="flex items-center gap-2 font-bold">
                 <Sparkles className="h-4 w-4 text-thread" /> Önerilen gönderim
               </p>
-              <p className="mt-1 text-sm text-white/60">Son 30 günün Amazon satış hızına göre FBA'da 30 günlük stok olması için:</p>
+              <p className="mt-1 text-sm text-white/60">Amazon satış hızına göre, {transit} günlük yol süresinden sonra FBA&apos;da 30 günlük stok olması için:</p>
             </div>
             <Button
               variant="gold"

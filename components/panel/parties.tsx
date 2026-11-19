@@ -28,6 +28,32 @@ export const telLink = (p: string) => `tel:${p.replace(/[^\d+]/g, '')}`
 export const mapLink = (p: Pick<Party, 'address' | 'district' | 'city' | 'name'>) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.address, p.district, p.city].filter(Boolean).join(', ') || p.name)}`
 
+/** Kibar ödeme hatırlatması (WhatsApp'ta düzenlenip gönderilir). */
+export function reminderText(p: { name: string; contact_name?: string | null }, rows: { date: string; amount: number; due: string | null }[]) {
+  const t = new Date().toISOString().slice(0, 10)
+  const fmt = (v: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 2 }).format(v)
+  const d = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+  const total = rows.reduce((a, r) => a + r.amount, 0)
+  const late = rows.some((r) => r.due && r.due < t)
+  const lines = rows
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 8)
+    .map((r) => `• ${d(r.date)} · ${fmt(r.amount)}${r.due ? ` (vade ${d(r.due)})` : ''}`)
+  return [
+    "Merhaba, OMY Ticaret'ten yazıyorum.",
+    '',
+    `${p.name} için kayıtlarımızda ${late ? 'vadesi geçmiş' : 'yaklaşan'} ${rows.length > 1 ? 'ödemeler' : 'bir ödeme'} görünüyor:`,
+    ...lines,
+    rows.length > 1 ? `Toplam: ${fmt(total)}` : '',
+    '',
+    'Uygun olduğunuzda ödeme günü hakkında bilgi verirseniz seviniriz. Ödemeyi yaptıysanız bu mesajı dikkate almayın, teşekkür ederiz.',
+    '',
+    'İyi çalışmalar.',
+  ]
+    .filter((l, i, a) => !(l === '' && a[i - 1] === ''))
+    .join('\n')
+}
+
 /**
  * Firma adı kutusu: kayıtlı carilerden seçtirir; yazılan ad bir cariyle eşleşirse kartına bağlantı gösterir.
  * Kayıtta eşleşme veritabanında kendiliğinden kurulur (Gezer = GEZER Ltd. Şti.).

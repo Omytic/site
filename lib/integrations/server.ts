@@ -68,9 +68,10 @@ export async function recordRun(db: SupabaseClient, channel: string, userId: str
     return { ok: true as const, channel, ...r }
   } catch (e: any) {
     // Gece senkronunda anahtarı henüz girilmemiş bağlantı hata sayılmaz, iz bırakmaz
-    if (!userId && /tanımlı değil/.test(String(e?.message))) {
+    // Elle denemede de iz bırakmaz (kalıcı kırmızı uyarı olmasın), sadece mesaj döner
+    if (/tanımlı değil/.test(String(e?.message))) {
       await db.from('sync_runs').delete().eq('id', run?.id)
-      return { ok: false as const, channel, skipped: true, message: String(e.message) }
+      return { ok: false as const, channel, skipped: !userId, message: String(e.message) }
     }
     await db.from('sync_runs').update({ status: 'hata', finished_at: new Date().toISOString(), message: String(e?.message ?? e).slice(0, 500) }).eq('id', run?.id)
     return { ok: false as const, channel, message: (e?.message as string) ?? 'Senkron başarısız' }

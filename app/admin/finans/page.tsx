@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDownLeft, ArrowUpRight, CheckCircle2, Pencil, Trash2, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, CheckCircle2, MessageCircle, Pencil, Trash2, Wallet } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   BRANDS,
@@ -16,13 +16,13 @@ import {
   SERIES,
   type BrandOrGenel,
 } from '@/lib/panel/constants'
-import { AFTER, invalidate, Q, useLocalState, write, type LedgerRow, type Transaction } from '@/lib/panel/data'
+import { AFTER, invalidate, partyKey, Q, useLocalState, write, type LedgerRow, type Transaction } from '@/lib/panel/data'
 import { addDays, daysBetween, dateTR, lastMonths, monthKey, monthLabel, money, norm, tl, today } from '@/lib/panel/format'
 import { BarChart, HBars, Legend, ShareBar, Waterfall } from '@/components/panel/charts'
 import { CurrencyBar } from '@/components/panel/CurrencyBar'
 import { symOf, useFxRate, type Currency } from '@/lib/panel/fx'
 import { useOpenFromQuery } from '@/components/panel/forms'
-import { PartyNameInput } from '@/components/panel/parties'
+import { PartyNameInput, reminderText, waLink } from '@/components/panel/parties'
 import { Badge, Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, PageHeader, SearchBox, Segmented, Select, ShowMore, Skeleton, Stat, StatusPill, Table, Textarea, useShowMore, useUi } from '@/components/panel/ui'
 
 type Period = 'ay' | '3ay' | 'yil' | '12ay' | 'tumu'
@@ -325,6 +325,16 @@ export default function FinancePage() {
 function PendingList({ title, tone, rows, onPaid }: { title: string; tone: 'gelir' | 'gider'; rows: LedgerRow[]; onPaid: (r: LedgerRow) => void }) {
   const total = rows.reduce((a, r) => a + Number(r.amount), 0)
   const t = today()
+  const parties = Q.parties()
+  // Alacakta: firmanın cari kartında telefonu varsa tek tıkla ödeme hatırlatması
+  const remind = (r: LedgerRow) => {
+    if (tone !== 'gelir' || !r.counterparty) return null
+    const k = partyKey(r.counterparty)
+    const p = (parties.data ?? []).find((x) => partyKey(x.name) === k)
+    if (!p?.phone) return null
+    const same = rows.filter((x) => x.counterparty && partyKey(x.counterparty) === k).map((x) => ({ date: x.tx_date, amount: Number(x.amount), due: x.due_date }))
+    return `${waLink(p.phone)}?text=${encodeURIComponent(reminderText(p, same))}`
+  }
   return (
     <Card
       title={
@@ -352,6 +362,11 @@ function PendingList({ title, tone, rows, onPaid }: { title: string; tone: 'geli
                 <div className="flex shrink-0 items-center gap-2">
                   {overdue ? <StatusPill tone="critical">Gecikti</StatusPill> : soon ? <StatusPill tone="warning">Bu hafta</StatusPill> : null}
                   <span className="font-bold tabular-nums">{tl(r.amount)}</span>
+                  {remind(r) && (
+                    <a href={remind(r)!} target="_blank" rel="noreferrer" className="rounded-lg p-1.5 text-[#128C7E] hover:bg-[#25D366]/10" title="WhatsApp'tan ödeme hatırlat">
+                      <MessageCircle className="h-5 w-5" />
+                    </a>
+                  )}
                   {r.source !== 'sevkiyat' && r.source !== 'reklam' && (
                     <button onClick={() => onPaid(r)} className="rounded-lg p-1.5 text-ink-soft/40 hover:bg-[#0ca30c]/10 hover:text-[#0a7d0a]" title={tone === 'gelir' ? 'Tahsil edildi' : 'Ödendi'}>
                       <CheckCircle2 className="h-5 w-5" />

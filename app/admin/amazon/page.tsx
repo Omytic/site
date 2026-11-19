@@ -46,7 +46,7 @@ export default function AmazonPage() {
   const daily = useQuery(`amazon_daily:${range}`, () => must<Daily[]>(supabase.from('amazon_traffic_daily').select('*').gte('day', since).order('day')))
   const asin = useQuery(`amazon_asin:${range}`, () => must<AsinRow[]>(supabase.from('amazon_traffic_asin').select('*').gte('day', since)))
   const fin = useQuery(`amazon_fin:${range}`, () => must<FinRow[]>(supabase.from('amazon_transactions').select('id,posted_at,type,description,order_id,total,product_charges,refund,commission,fba_fees,other_fees').gte('posted_at', since).order('posted_at', { ascending: false })))
-  const runs = useQuery('amazon_runs', () => must<Run[]>(supabase.from('sync_runs').select('channel,started_at,finished_at,status,message').like('channel', 'amazon%').order('started_at', { ascending: false }).limit(40)))
+  const runs = useQuery('amazon_runs', () => must<Run[]>(supabase.from('sync_runs').select('channel,started_at,finished_at,status,message').like('channel', 'amazon%').neq('channel', 'amazon_ads').order('started_at', { ascending: false }).limit(40)))
   const items = useItemsWithStock().data
   const [busy, setBusy] = useState('')
 

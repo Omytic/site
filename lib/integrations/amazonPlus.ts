@@ -115,7 +115,8 @@ export async function syncAmazonInventory(db: SupabaseClient): Promise<SyncResul
         unfulfillable: Number(d.unfulfillableQuantity?.totalUnfulfillableQuantity ?? 0),
         researching: Number(d.researchingQuantity?.totalResearchingQuantity ?? 0),
         total: Number(s.totalQuantity ?? 0),
-        amazon_updated_at: s.lastUpdatedTime ?? null,
+        // Amazon bazı ürünlerde tarihi boş metin gönderiyor
+        amazon_updated_at: s.lastUpdatedTime || null,
         synced_at: new Date(started).toISOString(),
       })
     }
@@ -270,7 +271,7 @@ export async function syncAmazonFinances(db: SupabaseClient, opts: { days?: numb
     const id = tx.transactionId || `${type}|${tx.postedDate}|${orderIdOf(tx) ?? ''}|${amt(tx.totalAmount)}`
     return {
       id,
-      posted_at: tx.postedDate ?? new Date().toISOString(),
+      posted_at: tx.postedDate || new Date().toISOString(),
       type,
       status: tx.transactionStatus ?? null,
       description: tx.description ?? null,

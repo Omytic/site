@@ -28,7 +28,7 @@ import { BRANDS, BRANDS_WITH_GENEL, CHANNELS, label } from '@/lib/panel/constant
 import { AFTER, invalidate, itemLabel, Q, write, type PartyAgreement, type PartyDetail, type PartyNote } from '@/lib/panel/data'
 import { dateTR, lastMonths, monthKey, monthLabel, num, relTime, tl, today } from '@/lib/panel/format'
 import { MiniBars } from '@/components/panel/charts'
-import { kindLabel, mapLink, PartyForm, segmentLabel, telLink, waLink } from '@/components/panel/parties'
+import { kindLabel, mapLink, PartyForm, reminderText, segmentLabel, telLink, waLink } from '@/components/panel/parties'
 import { Badge, Button, Card, cx, Drawer, Empty, ErrorNote, Field, Input, Segmented, Select, Skeleton, Stat, StatusPill, Textarea, useUi } from '@/components/panel/ui'
 
 const NOTE_KINDS = [
@@ -195,6 +195,12 @@ export default function PartyPage() {
       />
     )
 
+  // Ödeme hatırlatması: bekleyen satışlar ve gelir kayıtları
+  const pendingRows = [
+    ...mySales.filter((x) => x.status === 'tamamlandi' && x.payment_status === 'bekliyor').map((x) => ({ date: x.sale_date, amount: saleSum(x), due: x.due_date })),
+    ...myTx.filter((x) => x.direction === 'gelir' && x.payment_status === 'bekliyor').map((x) => ({ date: x.tx_date, amount: Number(x.amount), due: x.due_date })),
+  ].filter((r) => r.amount > 0)
+  const remindPhone = p.phone ?? p.party_contacts.find((c) => c.phone)?.phone ?? null
   const isCustomer = p.kind !== 'tedarikci'
   const isSupplier = p.kind !== 'musteri'
   const months = lastMonths(12)
@@ -258,6 +264,17 @@ export default function PartyPage() {
               <HeadBtn href={mapLink(p)} icon={<MapPin className="h-4 w-4" />} external>
                 Harita
               </HeadBtn>
+            )}
+            {pendingRows.length > 0 && remindPhone && (
+              <a
+                href={`${waLink(remindPhone)}?text=${encodeURIComponent(reminderText(p, pendingRows))}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#25D366] px-3.5 text-sm font-bold text-white hover:bg-[#1fb857]"
+                title="Hazır mesajla WhatsApp açılır, göndermeden önce düzenleyebilirsiniz"
+              >
+                <MessageCircle className="h-4 w-4" /> Ödeme hatırlat
+              </a>
             )}
             <button type="button" onClick={() => setEditing(true)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-thread px-3.5 text-sm font-bold text-night hover:bg-thread-soft">
               <Pencil className="h-4 w-4" /> Düzenle
