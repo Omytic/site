@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2, Sunrise } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2, Sunrise, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -30,6 +30,7 @@ import { passwordProblem } from '@/lib/panel/security'
 import { fetchRate, CURRENCIES, type Currency } from '@/lib/panel/fx'
 import { money, setDisplayCurrency, today } from '@/lib/panel/format'
 import { Button, cx, Drawer, Field, Input, useUi } from './ui'
+import { AskPanel } from './AskPanel'
 
 type NavPage = { href: string; label: string; icon: typeof Boxes; hint?: string }
 type NavSection = NavPage & { pages?: NavPage[] }
@@ -445,6 +446,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const { me, signOut } = useAuth()
   const [mobile, setMobile] = useState(false)
   const [account, setAccount] = useState(false)
+  const [ask, setAsk] = useState(false)
   const path = usePathname()
   const disp = useDisplayCurrency()
   useEffect(() => setMobile(false), [path])
@@ -533,6 +535,16 @@ export default function Shell({ children }: { children: ReactNode }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAsk(true)}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-night text-sm font-bold text-white hover:bg-night/90 sm:w-auto sm:px-3"
+              title="Panele soru sor"
+              aria-label="Panele soru sor"
+            >
+              <Sparkles className="h-4 w-4 text-thread" />
+              <span className="hidden sm:inline">Sor</span>
+            </button>
             <DisplayToggle d={disp} />
             <Button variant="ghost" size="sm" onClick={() => invalidate()} title="Verileri yenile" className="hidden sm:inline-flex">
               Yenile
@@ -545,6 +557,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div key={disp.ver}>{children}</div>
         </main>
       </div>
+
+      <AskPanel open={ask} onClose={() => setAsk(false)} />
 
       {/* Telefonda alt sekme çubuğu */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.06] bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Ana sayfalar">

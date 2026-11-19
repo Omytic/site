@@ -292,6 +292,11 @@ export default function PartyPage() {
               <Plus className="h-4 w-4" /> Alım gir
             </Link>
           )}
+          {isCustomer && (
+            <Link href={`/admin/cariler/${p.id}/teklif`} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-sm font-semibold hover:bg-white/15">
+              <FileText className="h-4 w-4" /> Teklif / fiyat listesi
+            </Link>
+          )}
           <Link href={`/admin/faturalar?yeni=1&cari=${q}`} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-sm font-semibold hover:bg-white/15">
             <Plus className="h-4 w-4" /> Fatura ekle
           </Link>
