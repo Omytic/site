@@ -159,6 +159,8 @@ export const TABLE_LABELS: Record<string, string> = {
   channel_costs: 'Kanal maliyeti',
   parties: 'Cari kartı',
   notify_recipients: 'Özet alıcısı',
+  customer_feedback: 'Müşteri sorusu/geri bildirimi',
+  ai_reports: 'Yapay zekâ raporu',
   party_contacts: 'Cari kişisi',
   party_notes: 'Cari notu',
   party_agreements: 'Cari anlaşması',

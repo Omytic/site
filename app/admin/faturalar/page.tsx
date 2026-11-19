@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, FileText, Paperclip, Search, Upload } from 'lucide-react'
+import { ArrowDown, ArrowUp, FileText, Paperclip, Search, Sparkles, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRANDS_WITH_GENEL, colorOf, label, type BrandOrGenel } from '@/lib/panel/constants'
 import { AFTER, invalidate, Q, write, type Invoice } from '@/lib/panel/data'
@@ -271,7 +271,46 @@ function InvoiceForm({ invoice, preset = '', issuers, onClose, onOpen }: { invoi
   })
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
+  const [reading, setReading] = useState(false)
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
+  // Yüklenen faturayı yapay zekâyla okuyup alanları doldurur
+  const readFile = async (src: File) => {
+    if (src.size > 3 * 1024 * 1024) return toast('Okumak için dosya 3 MB’den küçük olmalı.', 'error')
+    setReading(true)
+    try {
+      const data = await new Promise<string>((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(String(r.result).split(',')[1] ?? '')
+        r.onerror = () => rej(new Error('Dosya okunamadı'))
+        r.readAsDataURL(src)
+      })
+      const { data: s } = await supabase.auth.getSession()
+      const res = await fetch('/api/fatura/oku', { method: 'POST', headers: { Authorization: `Bearer ${s.session?.access_token ?? ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: src.name, type: src.type, data }) })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(b.message ?? 'Fatura okunamadı')
+      const kind = ['satis', 'alis', 'gider', 'iade'].includes(b.tur) ? b.tur : f.kind
+      const other = kind === 'satis' ? b.alici : b.satici
+      const num = (v: any) => (typeof v === 'number' && isFinite(v) ? String(v).replace('.', ',') : '')
+      const lines = Array.isArray(b.kalemler) ? b.kalemler.slice(0, 6).map((k: any) => `${k.ad}${k.adet ? ` × ${k.adet}` : ''}`).join(', ') : ''
+      setF((x) => ({
+        ...x,
+        inv_date: /^\d{4}-\d{2}-\d{2}$/.test(b.tarih ?? '') ? b.tarih : x.inv_date,
+        kind,
+        number: b.fatura_no || x.number,
+        counterparty: other?.unvan || x.counterparty,
+        amount: num(b.toplam) || x.amount,
+        vat: num(b.kdv) || x.vat,
+        issuer: x.issuer || b.kesen_sistem || '',
+        brand: (['formstep', 'seryn', 'kumas'].includes(b.marka) ? b.marka : x.brand) as BrandOrGenel | '',
+        note: x.note || [other?.vkn ? `VKN/TCKN: ${other.vkn}` : '', lines].filter(Boolean).join(' · '),
+      }))
+      toast('Fatura okundu; alanları kontrol edip kaydedin.')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setReading(false)
+    }
+  }
   const n = (v: string) => (v.trim() === '' ? null : Number(v.replace(/\./g, '').replace(',', '.')))
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -377,8 +416,22 @@ function InvoiceForm({ invoice, preset = '', issuers, onClose, onOpen }: { invoi
             </Select>
           </Field>
         </div>
-        <Field label={invoice?.file_path ? 'Dosyayı değiştir' : 'Dosya'}>
-          <Input type="file" accept=".pdf,.xml,.html,.zip,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <Field label={invoice?.file_path ? 'Dosyayı değiştir' : 'Dosya'} hint="PDF, fotoğraf ya da e-fatura XML yüklerseniz bilgiler kendiliğinden doldurulabilir">
+          <Input
+            type="file"
+            accept=".pdf,.xml,.html,.zip,image/*"
+            onChange={(e) => {
+              const x = e.target.files?.[0] ?? null
+              setFile(x)
+              // Yeni faturada alanlar boşsa dosya seçilir seçilmez okunur
+              if (x && !invoice && !f.amount && !f.number && /pdf|image|xml|html/i.test(x.type || x.name)) readFile(x)
+            }}
+          />
+          {file && /pdf|image|xml|html/i.test(file.type || file.name) && (
+            <Button type="button" size="sm" variant="secondary" className="mt-2" icon={<Sparkles className="h-4 w-4 text-thread" />} loading={reading} onClick={() => readFile(file)}>
+              {reading ? 'Fatura okunuyor…' : 'Faturayı oku, alanları doldur'}
+            </Button>
+          )}
         </Field>
         <Field label="Not">
           <Textarea rows={2} value={f.note} onChange={(e) => set({ note: e.target.value })} />

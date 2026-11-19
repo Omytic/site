@@ -42,7 +42,9 @@ export function trendyolConfigured() {
   return !!(process.env.TRENDYOL_SELLER_ID && process.env.TRENDYOL_API_KEY && process.env.TRENDYOL_API_SECRET)
 }
 
-function headers() {
+export const TRENDYOL_BASE = BASE
+
+export function headers() {
   const id = process.env.TRENDYOL_SELLER_ID!
   const basic = Buffer.from(`${process.env.TRENDYOL_API_KEY}:${process.env.TRENDYOL_API_SECRET}`).toString('base64')
   return { Authorization: `Basic ${basic}`, 'User-Agent': `${id} - SelfIntegration`, Accept: 'application/json' }

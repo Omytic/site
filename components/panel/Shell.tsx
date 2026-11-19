@@ -22,7 +22,7 @@ import {
   Store,
   Truck,
   Wallet,
-  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2, Sunrise, Sparkles } from 'lucide-react'
+  X, Tag, Calculator, ClipboardCheck, CalendarDays, Settings, Inbox, Handshake, FileText, ChevronDown, Users, Building2, Sunrise, Sparkles, MessagesSquare, Lightbulb } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/panel/auth'
 import { invalidate } from '@/lib/panel/data'
@@ -49,8 +49,10 @@ const NAV: NavSection[] = [
       { href: '/admin/alimlar', label: 'Alımlar', icon: PackagePlus, hint: 'Mal alımları ve maliyet' },
       { href: '/admin/stok', label: 'Stok', icon: Boxes, hint: 'Depo, yolda, Amazon' },
       { href: '/admin/urunler', label: 'Ürün kartları', icon: Tag, hint: 'Fiyat, maliyet, varyantlar' },
+      { href: '/admin/urun-metinleri', label: 'Ürün sayfası metinleri', icon: FileText, hint: 'Amazon ve Trendyol başlık, madde, açıklama' },
       { href: '/admin/amazon', label: 'Amazon', icon: Store, hint: 'Ziyaret, dönüşüm, gerçek ücretler, FBA stoğu' },
       { href: '/admin/sevkiyat', label: 'Amazon sevkiyatı', icon: Truck, hint: 'FBA gönderileri' },
+      { href: '/admin/musteri-sesi', label: 'Müşteri sesi', icon: MessagesSquare, hint: 'Pazaryeri soruları ve geri bildirimler' },
     ],
   },
   {
@@ -74,6 +76,7 @@ const NAV: NavSection[] = [
       { href: '/admin/fuarlar', label: 'Fuarlar', icon: CalendarDays, hint: 'Fuar takvimi ve fuar kasası' },
       { href: '/admin/isbirlikleri', label: 'İş birlikleri', icon: Handshake, hint: 'Influencer ve ortak işler' },
       { href: '/admin/sosyal', label: 'Sosyal medya', icon: Users, hint: 'Instagram ve Facebook: takipçi, erişim, gönderiler' },
+      { href: '/admin/icerik', label: 'İçerik fikirleri', icon: Lightbulb, hint: 'Global örnekler ve sizin verinizden içerik planı' },
       { href: '/admin/kampanyalar', label: 'Kampanyalar', icon: Megaphone, hint: 'Meta, Google, Amazon reklam performansı' },
       { href: '/admin/varliklar', label: 'Dijital varlıklar', icon: Globe, hint: 'Hesaplar, alan adları' },
     ],
@@ -516,7 +519,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       <div className="lg:pl-64">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-black/[0.06] bg-[#F4F3EF]/85 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <button onClick={() => setMobile(true)} className="flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-line lg:hidden" aria-label="Menüyü aç">
               <Menu className="h-5 w-5" />
             </button>
@@ -534,7 +537,7 @@ export default function Shell({ children }: { children: ReactNode }) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={() => setAsk(true)}

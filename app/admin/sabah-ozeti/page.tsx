@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Copy, Mail, MessageCircle, Pencil, Plus, Send, Trash2 } from 'lucide-react'
+import { CalendarRange, Check, Copy, Mail, MessageCircle, Pencil, Plus, Send, Sparkles, Trash2 } from 'lucide-react'
+import { Markdown, runAiJob, type AiReport } from '@/components/panel/aiJob'
 import { supabase } from '@/lib/supabase'
 import { invalidate, must, useQuery, write } from '@/lib/panel/data'
-import { relTime } from '@/lib/panel/format'
+import { dateTimeTR, relTime } from '@/lib/panel/format'
 import { Button, Card, cx, Drawer, Empty, Field, Input, PageHeader, Skeleton, StatusPill, useUi } from '@/components/panel/ui'
 
 type Recipient = { id: string; name: string; phone: string | null; email: string | null; channels: string[]; topics: string[]; active: boolean }
@@ -122,6 +123,7 @@ export default function MorningDigestPage() {
         </Card>
 
         <div className="space-y-4">
+          <WeeklyCard />
           <Card title="Bağlantılar">
             <ul className="-my-1 divide-y divide-line text-sm">
               <li className="flex items-center justify-between gap-3 py-2.5">
@@ -206,7 +208,7 @@ export default function MorningDigestPage() {
 
 function RecipientForm({ r, onClose }: { r: Recipient | null; onClose: () => void }) {
   const { toast, confirm } = useUi()
-  const [f, setF] = useState({ name: r?.name ?? '', phone: r?.phone ?? '', email: r?.email ?? '', wa: r ? r.channels.includes('whatsapp') : true, mail: r ? r.channels.includes('email') : false, active: r?.active ?? true })
+  const [f, setF] = useState({ name: r?.name ?? '', phone: r?.phone ?? '', email: r?.email ?? '', wa: r ? r.channels.includes('whatsapp') : false, mail: r ? r.channels.includes('email') : true, active: r?.active ?? true, ozet: r ? r.topics.includes('ozet') : true, haftalik: r ? r.topics.includes('haftalik') : true })
   const [busy, setBusy] = useState(false)
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -215,7 +217,7 @@ function RecipientForm({ r, onClose }: { r: Recipient | null; onClose: () => voi
     if (f.mail && !f.email.trim()) return toast('E-posta adresini yazın', 'error')
     setBusy(true)
     try {
-      const row = { name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, channels: [f.wa && 'whatsapp', f.mail && 'email'].filter(Boolean), topics: ['ozet'], active: f.active }
+      const row = { name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, channels: [f.wa && 'whatsapp', f.mail && 'email'].filter(Boolean), topics: [f.ozet && 'ozet', f.haftalik && 'haftalik'].filter(Boolean), active: f.active }
       await write(r ? supabase.from('notify_recipients').update(row).eq('id', r.id) : supabase.from('notify_recipients').insert(row))
       invalidate('notify_recipients')
       onClose()
@@ -266,18 +268,77 @@ function RecipientForm({ r, onClose }: { r: Recipient | null; onClose: () => voi
         <Field label="Ad">
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ör. Ömer" autoFocus required />
         </Field>
-        <Field label="WhatsApp numarası">
+        <Field label="Telefon (isteğe bağlı)">
           <Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} type="tel" inputMode="tel" placeholder="05xx xxx xx xx" />
         </Field>
         <Field label="E-posta">
           <Input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} type="email" />
         </Field>
         <div className="space-y-2 rounded-xl bg-black/[0.03] p-3">
-          {box(f.wa, (v) => setF({ ...f, wa: v }), 'WhatsApp ile gelsin')}
           {box(f.mail, (v) => setF({ ...f, mail: v }), 'E-posta ile gelsin')}
+          {box(f.wa, (v) => setF({ ...f, wa: v }), 'WhatsApp ile gelsin (WhatsApp bağlanınca)')}
+          <div className="my-1 border-t border-line" />
+          {box(f.ozet, (v) => setF({ ...f, ozet: v }), 'Her sabah özet')}
+          {box(f.haftalik, (v) => setF({ ...f, haftalik: v }), 'Pazartesi haftalık rapor')}
           {r && box(f.active, (v) => setF({ ...f, active: v }), 'Gönderim açık')}
         </div>
       </form>
     </Drawer>
+  )
+}
+
+function WeeklyCard() {
+  const { toast } = useUi()
+  const reps = useQuery('ai:haftalik', () => must<AiReport[]>(supabase.from('ai_reports').select('*').eq('kind', 'haftalik').order('created_at', { ascending: false }).limit(8)))
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState<string | null>(null)
+  const list = reps.data ?? []
+  const make = async () => {
+    setBusy(true)
+    try {
+      const id = await runAiJob({ kind: 'haftalik' })
+      invalidate('ai:haftalik')
+      setOpen(id)
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const cur = list.find((x) => x.id === open)
+  return (
+    <Card
+      title={
+        <span className="inline-flex items-center gap-2">
+          <CalendarRange className="h-4 w-4 text-ink-soft" /> Haftalık rapor
+        </span>
+      }
+      action={
+        <Button size="sm" variant="ghost" icon={<Sparkles className="h-4 w-4 text-thread" />} loading={busy} onClick={make}>
+          Şimdi hazırla
+        </Button>
+      }
+    >
+      <p className="-mt-1 mb-2 text-xs text-ink-soft/60">Her pazartesi 09.00&apos;da geçen haftanın raporu yazılır ve &quot;haftalık rapor&quot; işaretli kişilere e-postayla gider.</p>
+      {list.length === 0 ? (
+        <p className="text-sm text-ink-soft/60">Henüz rapor yok.</p>
+      ) : (
+        <ul className="-my-1 divide-y divide-line">
+          {list.map((x) => (
+            <li key={x.id} className="py-2">
+              <button type="button" onClick={() => setOpen(open === x.id ? null : x.id)} className="w-full text-left text-sm font-semibold text-ink hover:underline">
+                {x.subject ?? dateTimeTR(x.created_at)}
+                {x.status !== 'hazir' && <span className="ml-1 text-xs font-normal text-[#b83030]">{x.status === 'hata' ? '(hata)' : '(sürüyor)'}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {cur && (
+        <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-xl bg-black/[0.03] p-3">
+          {cur.status === 'hata' ? <p className="text-sm text-[#b83030]">{cur.error}</p> : <Markdown text={cur.text ?? ''} />}
+        </div>
+      )}
+    </Card>
   )
 }

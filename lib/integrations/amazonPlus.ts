@@ -17,7 +17,7 @@ const DAY = 86_400_000
 const emptyResult = (from: number, to: number): SyncResult => ({ fetched: 0, imported: 0, updated: 0, linked: 0, skipped: 0, unmatched: [], from: new Date(from).toISOString(), to: new Date(to).toISOString() })
 
 /** İzin eksikse hangi rolü eklemek gerektiğini söyleyen istek yardımcısı. 429'da bekleyip tekrar dener. */
-async function sp(path: string, query: Record<string, string | undefined>, role: string, deadline: number, init: RequestInit = {}) {
+export async function sp(path: string, query: Record<string, string | undefined>, role: string, deadline: number, init: RequestInit = {}) {
   const token = await accessToken()
   const q = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined) as [string, string][])
   const url = `${ENDPOINT}${path}${q.toString() ? `?${q}` : ''}`

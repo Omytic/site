@@ -11,6 +11,8 @@ import type { LocationId } from './panel/constants'
 const DAY = 86_400_000
 const CH: Record<string, string> = { trendyol: 'Trendyol', amazon: 'Amazon', hepsiburada: 'Hepsiburada', site: 'Site', seryn: 'serynskin.com', toptan: 'Toptan', fuar: 'Fuar', diger: 'Diğer', instagram: 'Instagram' }
 const SYNC: Record<string, string> = {
+  trendyol_soru: 'Trendyol soruları',
+  amazon_geribildirim: 'Amazon geri bildirimleri',
   trendyol: 'Trendyol',
   amazon: 'Amazon siparişleri',
   amazon_stok: 'Amazon FBA stoğu',
@@ -53,6 +55,7 @@ export interface Digest {
   newLeads: { name: string; created: string }[]
   ads: { platform: string; campaign: string; spend: number }[]
   errors: { channel: string; message: string }[]
+  voice: { waiting: number; oldestHours: number | null; negative: { text: string; rating: number }[] }
 }
 
 export async function buildDigest(db: SupabaseClient, now = Date.now()): Promise<Digest> {
@@ -60,7 +63,7 @@ export async function buildDigest(db: SupabaseClient, now = Date.now()): Promise
   const y = ist(now - DAY)
   const from90 = ist(now - 92 * DAY)
 
-  const [lines, items, stock, pendingSales, pendingTx, parties, notes, leads, ads, runs, shipments] = await Promise.all([
+  const [lines, items, stock, pendingSales, pendingTx, parties, notes, leads, ads, runs, feedback, shipments] = await Promise.all([
     all<SaleLine>((a, b) => db.from('sale_lines').select('sale_id,sale_date,channel,status,item_id,qty,revenue,cogs,brand,name,variant,unit,unit_price,unit_cost,location_id').gte('sale_date', from90).range(a, b)),
     all<any>((a, b) => db.from('items').select('*').range(a, b)),
     all<{ item_id: string; location_id: LocationId; qty: number }>((a, b) => db.from('stock_levels').select('*').range(a, b)),
@@ -71,6 +74,7 @@ export async function buildDigest(db: SupabaseClient, now = Date.now()): Promise
     all<any>((a, b) => db.from('leads').select('name,company,created_at').eq('status', 'yeni').range(a, b)),
     all<any>((a, b) => db.from('ad_insights').select('platform,campaign_id,campaign_name,spend,conversions,day').gte('day', ist(now - 7 * DAY)).range(a, b)),
     db.from('sync_runs').select('channel,status,message,started_at').gte('started_at', new Date(now - 36 * 3600_000).toISOString()).order('started_at', { ascending: false }).limit(200),
+    db.from('customer_feedback').select('kind,status,posted_at,rating,sentiment,text').or(`status.eq.bekliyor,posted_at.gte.${new Date(now - 2 * DAY).toISOString()}`).limit(500),
     db.from('shipments').select('ship_date,received_date').eq('status', 'teslim_alindi').not('received_date', 'is', null).order('ship_date', { ascending: false }).limit(10),
   ])
   const party = new Map(parties.map((p) => [p.id, p]))
@@ -186,6 +190,13 @@ export async function buildDigest(db: SupabaseClient, now = Date.now()): Promise
     newLeads: leads.map((l) => ({ name: l.company || l.name, created: String(l.created_at).slice(0, 10) })).slice(0, 8),
     ads: adWaste.map((c) => ({ platform: c.platform, campaign: c.campaign, spend: c.spend })),
     errors,
+    voice: (() => {
+      const fb = (feedback.data ?? []) as any[]
+      const w = fb.filter((f) => f.kind === 'soru' && f.status === 'bekliyor')
+      const oldest = w.length ? Math.max(...w.map((f) => (now - Date.parse(f.posted_at)) / 3_600_000)) : null
+      const neg = fb.filter((f) => f.sentiment === 'olumsuz' && Date.parse(f.posted_at) >= now - 2 * DAY).map((f) => ({ text: String(f.text).slice(0, 100), rating: Number(f.rating) }))
+      return { waiting: w.length, oldestHours: oldest === null ? null : Math.round(oldest), negative: neg.slice(0, 5) }
+    })(),
   }
 }
 
@@ -227,6 +238,12 @@ export function digestText(d: Digest, panelUrl = 'https://omytic.com/admin') {
     d.calls.forEach((c) => L.push(`• ${c.party}: ${c.note}`))
     if (d.newLeads.length) L.push(`• ${n(d.newLeads.length)} yeni talep cevap bekliyor: ${d.newLeads.slice(0, 4).map((l) => l.name).join(', ')}`)
   }
+  if (d.voice.waiting || d.voice.negative.length) {
+    L.push('')
+    L.push('💬 *Müşteri sesi*')
+    if (d.voice.waiting) L.push(`• ${n(d.voice.waiting)} Trendyol sorusu cevap bekliyor${d.voice.oldestHours ? ` (en eskisi ${d.voice.oldestHours < 24 ? `${n(d.voice.oldestHours)} saat` : `${n(Math.round(d.voice.oldestHours / 24))} gün`})` : ''}`)
+    d.voice.negative.forEach((x) => L.push(`• ${x.rating}★ geri bildirim: "${x.text}"`))
+  }
   if (d.ads.length) {
     L.push('')
     L.push('📣 *Satış getirmeyen reklamlar (7 gün)*')
@@ -237,7 +254,7 @@ export function digestText(d: Digest, panelUrl = 'https://omytic.com/admin') {
     L.push('⚠️ *Bağlantı hatası*')
     d.errors.forEach((e) => L.push(`• ${e.channel}: ${e.message}`))
   }
-  if (!d.stock.length && !d.fba.length && !d.receivables.length && !d.calls.length && !d.newLeads.length && !d.ads.length && !d.errors.length) {
+  if (!d.stock.length && !d.fba.length && !d.receivables.length && !d.calls.length && !d.newLeads.length && !d.ads.length && !d.errors.length && !d.voice.waiting && !d.voice.negative.length) {
     L.push('')
     L.push('✅ Bugün acil bir iş yok.')
   }
@@ -263,6 +280,8 @@ export function digestParams(d: Digest): string[] {
   const other = [
     d.calls.length ? `${n(d.calls.length)} arama` : '',
     d.newLeads.length ? `${n(d.newLeads.length)} yeni talep` : '',
+    d.voice.waiting ? `${n(d.voice.waiting)} soru cevap bekliyor` : '',
+    d.voice.negative.length ? `${n(d.voice.negative.length)} olumsuz geri bildirim` : '',
     d.ads.length ? `${n(d.ads.length)} reklam satış getirmiyor` : '',
     d.errors.length ? `bağlantı hatası: ${d.errors.map((e) => e.channel).join(', ')}` : '',
   ].filter(Boolean).join(' · ') || 'yok'
